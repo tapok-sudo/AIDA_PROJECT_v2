@@ -234,3 +234,15 @@ if not st.session_state['authenticated']:
 
 # --- ВЕСЬ ОСТАЛЬНОЙ ИНТЕРФЕЙС НИЖЕ ---
 st.success(f"Система активна. Приветствую, {st.session_state['user_name']}!")
+# Убедитесь, что этот код идет СРАЗУ ПОСЛЕ строки: for msg in messages:
+for msg in messages:
+    # Теперь переменная 'msg' существует, и ошибки не будет
+    display_name = msg['user']
+    
+    if msg['user'] in ["Tony Stark", "Админ", "тапок"]:
+        display_name = f"👑 <span style='color:#ff4b4b; font-weight:bold;'>[ADMIN]</span> {msg['user']}"
+    else:
+        display_name = f"👤 {msg['user']}"
+    
+    # Вывод сообщения
+    st.markdown(f"{display_name}: {msg['text']}", unsafe_allow_html=True)
