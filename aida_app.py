@@ -123,21 +123,29 @@ elif menu == "💬 ОБЩИЙ ЧАТ":
     m_in = st.chat_input("Напишите коллегам...")
     if m_in:
         c.execute("INSERT INTO global_chat (sender, sender_key, message, timestamp) VALUES (?,?,?,?)", (st.session_state.user, u_key, m_in, datetime.now()))
-        conn.commit(); st.rerun()
-    
+        conn.commit()
+        st.rerun()
+
     c_data = pd.read_sql("SELECT * FROM global_chat ORDER BY timestamp DESC LIMIT 50", conn)
+    
     for _, m in c_data.iterrows():
-        s_txt, s_col = get_user_status(m['sender_key'])
+        # --- ВОТ ТУТ МЫ ОПРЕДЕЛЯЕМ ИМЯ И ПРИПИСКУ ---
+        display_name = m['sender']
+        if m['sender'] in ["Tony Stark", "Админ", "тапок"]:
+            display_name = f"👑 <span style='color:#ff4b4b; font-weight:bold;'>[ADMIN]</span> {m['sender']}"
+        else:
+            display_name = f"👤 {m['sender']}"
+            
         with st.chat_message("user"):
-            st.write(f"**{m['sender']}** <span style='color:{s_col}; font-size:11px;'>{s_txt}</span>", unsafe_allow_html=True)
+            st.markdown(f"{display_name}", unsafe_allow_html=True)
             st.write(m['message'])
-            if m['formula_data']: st.info(m['formula_data'])
-            l_count = c.execute("SELECT COUNT(*) FROM message_likes WHERE message_id=?", (m['id'],)).fetchone()[0]
-            if st.button(f"👍 {l_count}", key=f"l_{m['id']}"):
-                try:
-                    c.execute("INSERT INTO message_likes VALUES (?,?)", (m['id'], u_key))
-                    conn.commit(); st.rerun()
-                except: st.toast("Уже оценено")
+            
+            # Кнопка удаления для админа (строка 144 вашего кода)
+            if st.session_state.get('is_admin', False):
+                if st.button("🗑️", key=f"del_{m['id']}"):
+                    c.execute("DELETE FROM global_chat WHERE id = ?", (m['id'],))
+                    conn.commit()
+                    st.rerun()
 
 # --- РАЗДЕЛ: АДМИНКА ---
 elif menu == "🔐 Админ-панель":
@@ -178,15 +186,7 @@ elif menu == "🛒 Подписка":
         exp = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
         c.execute("INSERT INTO keys (license_key, owner_name, expiry_date) VALUES (?, 'Клиент_Сайта', ?)", (nk, exp))
         conn.commit(); st.success(f"Ваш ключ: {nk}")
-        # --- ДОБАВЛЯЕМ ПРИПИСКУ АДМИНА ---
-display_name = msg['user']
-
-# Если имя пользователя "Tony Stark" или "Админ", добавляем префикс
-if msg['user'] in ["тапок", "Админ"]:
-    display_name = f"👑 <span style='color:#ff4b4b; font-weight:bold;'>[ADMIN]</span> {msg['user']}"
-else:
-    display_name = f"👤 {msg['user']}"
-
+        
 # Выводим в чат с использованием unsafe_allow_html=True для работы стилей
 st.markdown(f"{display_name}: {msg['text']}", unsafe_allow_html=True)
 import streamlit as st
