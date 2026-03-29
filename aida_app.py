@@ -220,7 +220,7 @@ if not st.session_state['authenticated']:
     
     if st.button("АКТИВИРОВАТЬ"):
         # ПРОВЕРКА КЛЮЧА В БАЗЕ (замените логику на вашу из БД)
-        if key_input == "ВАШ_СЕКРЕТНЫЙ_КЛЮЧ": 
+        if key_input == "AIDA-8KCV-NP4X": 
             st.session_state['authenticated'] = True
             st.session_state['user_name'] = "Tony Stark"
             st.session_state['is_admin'] = True
