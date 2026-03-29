@@ -119,7 +119,7 @@ with col_c:
      for c_i in r['components'].split(","):
          if ":" in c_i:
             p = c_i.split(":")
-             comps.append(f'<div class="component-row"><span style="color:#58a6ff">{p[0]}</span> <span>{p[1]} г</span></div>')
+            comps.append(f'<div class="component-row"><span style="color:#58a6ff">{p[0]}</span> <span>{p[1]} г</span></div>')
 comp_html = "".join(comps)
             st.markdown(f'<div class="formula-card"><div class="card-header">{r["mark"]} {r["model"]} | {r["code"]}</div><div style="color:gray">{r["notes"]}</div>{comp_html}</div>', unsafe_allow_html=True)
 
