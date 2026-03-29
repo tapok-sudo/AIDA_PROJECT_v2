@@ -47,7 +47,7 @@ def get_user_status(user_key):
     likes = c.execute("SELECT COUNT(ml.message_id) FROM message_likes ml JOIN global_chat gc ON ml.message_id = gc.id WHERE gc.sender_key = ?", (user_key,)).fetchone()[0]
     if likes >= 50: return "💎 МАСТЕР-ЛЕГЕНДА", "#00d4ff"
     if likes >= 20: return "🔥 ТОП-КОЛОРИСТ", "#ff8c00"
-    if likes >= 5: return "🛠 ПРОФИ", "#51cf66"
+    if likes >= 5: return "🛠 ПРОФИ", "#51cf66"   
     return "👨‍ู่ НОВИЧОК", "#8b949e"
 
 # --- 3. АВТОРИЗАЦИЯ И ПРАВИЛА ---
@@ -171,10 +171,21 @@ elif menu == "➕ Добавить":
 elif menu == "🛒 Подписка":
     st.header("Магазин лицензий")
     st.info(f"ID вашего устройства: {get_device_id()}")
-    st.write("Цена: 2 500 ₽ / 30 дней")
+    st.write("Цена: 7777 ₽ / 30 дней")
     st.markdown("[💳 ОПЛАТИТЬ ЧЕРЕЗ СБП](https://qr.nspk.ru/ВАШ_КОД)")
     if st.button("ПОЛУЧИТЬ КЛЮЧ ПОСЛЕ ОПЛАТЫ"):
         nk = generate_secure_key()
         exp = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
         c.execute("INSERT INTO keys (license_key, owner_name, expiry_date) VALUES (?, 'Клиент_Сайта', ?)", (nk, exp))
         conn.commit(); st.success(f"Ваш ключ: {nk}")
+        # --- ДОБАВЛЯЕМ ПРИПИСКУ АДМИНА ---
+display_name = msg['user']
+
+# Если имя пользователя "Tony Stark" или "Админ", добавляем префикс
+if msg['user'] in ["тапок", "Админ"]:
+    display_name = f"👑 <span style='color:#ff4b4b; font-weight:bold;'>[ADMIN]</span> {msg['user']}"
+else:
+    display_name = f"👤 {msg['user']}"
+
+# Выводим в чат с использованием unsafe_allow_html=True для работы стилей
+st.markdown(f"{display_name}: {msg['text']}", unsafe_allow_html=True)
