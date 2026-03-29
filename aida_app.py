@@ -115,7 +115,7 @@ if menu == "🔍 Поиск":
                 conn.commit(); st.toast("Отправлено в чат!")
         with col_c:
            # Безопасный разбор компонентов
-comps = []
+    comps = []
 for c_i in r['components'].split(","):
     if ":" in c_i:
         p = c_i.split(":")
