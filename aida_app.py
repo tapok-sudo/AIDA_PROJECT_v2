@@ -48,8 +48,28 @@ if saved_key and not st.session_state['authenticated']:
 
 # --- 3. ДАЛЬШЕ ИДЕТ ВАШ ОБЫЧНЫЙ КОД (ВХОД И МЕНЮ) ---
 if not st.session_state['authenticated']:
-    # Окно ввода ключа, если куки нет...
+    st.title("A.I.D.A. Core: Вход в систему")
+    key_input = st.text_input("Введите ваш ключ доступа:", type="password")
     
+    if st.button("АКТИВИРОВАТЬ"):
+        # Ваша проверка в БД (как в строках 36-41)
+        conn = sqlite3.connect('aida_production_v12.db')
+        c = conn.cursor()
+        c.execute("SELECT owner_name FROM keys WHERE license_key = ?", (key_input,))
+        result = c.fetchone()
+        conn.close()
+
+        if result:
+            st.session_state['authenticated'] = True
+            st.session_state['user_name'] = result[0]
+            # СОХРАНЯЕМ КУКУ, ЧТОБЫ БОЛЬШЕ НЕ ВВОДИТЬ!
+            cookie_manager.set("aida_access_token", key_input, expires_at=datetime.now() + timedelta(days=30))
+            st.rerun()
+        else:
+            st.error("Неверный ключ!")
+    st.stop() # Остановка, пока не войдут
+
+# ВСЁ, ЧТО НИЖЕ ЭТОЙ СТРОКИ, БУДЕТ ВИДНО ТОЛЬКО ПОСЛЕ ВХОДА
 # --- 1. ТЕХНИЧЕСКИЕ НАСТРОЙКИ И HWID ---
 def get_device_id():
     raw_id = f"{platform.node()}-{platform.processor()}-{platform.system()}"
