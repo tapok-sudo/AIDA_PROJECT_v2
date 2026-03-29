@@ -1,10 +1,13 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-import platform
+import platform # Для определения системы
+import hashlib # Для генерации ID устройства (исправит последнюю ошибку)
+import secrets # Для генерации ключей
+import string # Для работы с текстом
+import time # Для пауз
 from datetime import datetime, timedelta
-import extra_streamlit_components as stx
-import time
+import extra_streamlit_components as stx # Для куки
 
 # --- 1. ПРАВИЛЬНАЯ ИНИЦИАЛИЗАЦИЯ КУКИ (Без желтого экрана) ---
 def get_manager():
