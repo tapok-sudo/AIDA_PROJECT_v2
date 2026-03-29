@@ -2,7 +2,6 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import platform
-import hashkib
 from datetime import datetime, timedelta
 import extra_streamlit_components as stx
 import time
