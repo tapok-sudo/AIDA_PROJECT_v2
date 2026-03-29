@@ -113,13 +113,13 @@ if menu == "🔍 Поиск":
                 f_data = f"🎨 {r['mark']} {r['code']} ({r['notes']})"
                 c.execute("INSERT INTO global_chat (sender, sender_key, message, formula_data, timestamp) VALUES (?,?,?,?,?)", (st.session_state.user, u_key, "Поделился формулой", f_data, datetime.now()))
                 conn.commit(); st.toast("Отправлено в чат!")
-        with col_c:
-           # Безопасный разбор компонентов
-    comps = []
-for c_i in r['components'].split(","):
-    if ":" in c_i:
-        p = c_i.split(":")
-        comps.append(f'<div class="component-row"><span style="color:#58a6ff">{p[0]}</span> <span>{p[1]} г</span></div>')
+with col_c:
+     # Безопасный разбор компонентов    
+     comps = []
+     for c_i in r['components'].split(","):
+         if ":" in c_i:
+            p = c_i.split(":")
+             comps.append(f'<div class="component-row"><span style="color:#58a6ff">{p[0]}</span> <span>{p[1]} г</span></div>')
 comp_html = "".join(comps)
             st.markdown(f'<div class="formula-card"><div class="card-header">{r["mark"]} {r["model"]} | {r["code"]}</div><div style="color:gray">{r["notes"]}</div>{comp_html}</div>', unsafe_allow_html=True)
 
