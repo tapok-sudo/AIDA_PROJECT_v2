@@ -189,3 +189,48 @@ else:
 
 # Выводим в чат с использованием unsafe_allow_html=True для работы стилей
 st.markdown(f"{display_name}: {msg['text']}", unsafe_allow_html=True)
+import streamlit as st
+import extra_streamlit_components as stx
+from datetime import datetime, timedelta
+
+# --- ИНИЦИАЛИЗАЦИЯ МЕНЕДЖЕРА КУКИ ---
+@st.cache_resource
+def get_cookie_manager():
+    return stx.CookieManager()
+
+cookie_manager = get_cookie_manager()
+
+# Проверяем, есть ли уже сохраненный ключ в браузере
+saved_key = cookie_manager.get(cookie="aida_access_token")
+
+if 'authenticated' not in st.session_state:
+    st.session_state['authenticated'] = False
+
+# Если нашли куку и еще не авторизованы — авторизуем автоматически
+if saved_key and not st.session_state['authenticated']:
+    # Тут можно добавить проверку saved_key в базе данных для безопасности
+    st.session_state['authenticated'] = True
+    st.session_state['user_name'] = "Tony Stark" # Или имя владельца ключа
+    st.session_state['is_admin'] = True # Если это ваш ключ
+
+# --- ОКНО ВХОДА (если куки нет или она неверна) ---
+if not st.session_state['authenticated']:
+    st.title("A.I.D.A. CORE: Авторизация")
+    key_input = st.text_input("Введите протокол доступа:", type="password")
+    
+    if st.button("АКТИВИРОВАТЬ"):
+        # ПРОВЕРКА КЛЮЧА В БАЗЕ (замените логику на вашу из БД)
+        if key_input == "ВАШ_СЕКРЕТНЫЙ_КЛЮЧ": 
+            st.session_state['authenticated'] = True
+            st.session_state['user_name'] = "Tony Stark"
+            st.session_state['is_admin'] = True
+            
+            # СОХРАНЯЕМ КУКУ НА 30 ДНЕЙ
+            cookie_manager.set("aida_access_token", key_input, expires_at=datetime.now() + timedelta(days=30))
+            st.rerun()
+        else:
+            st.error("Доступ отклонен. Ключ не распознан.")
+    st.stop()
+
+# --- ВЕСЬ ОСТАЛЬНОЙ ИНТЕРФЕЙС НИЖЕ ---
+st.success(f"Система активна. Приветствую, {st.session_state['user_name']}!")
