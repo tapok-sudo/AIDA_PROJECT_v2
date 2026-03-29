@@ -6,7 +6,50 @@ import platform
 import secrets
 import string
 from datetime import datetime, timedelta
+import streamlit as st
+import sqlite3
+import pandas as pd
+from datetime import datetime
+import extra_streamlit_components as stx # <-- Не забудьте импорт!
+import time
 
+# --- 1. ИНИЦИАЛИЗАЦИЯ МЕНЕДЖЕРА КУКИ (Строка ~10) ---
+@st.cache_resource
+def get_manager():
+    return stx.CookieManager()
+
+cookie_manager = get_manager()
+
+# Небольшая пауза, чтобы браузер успел передать данные в облако
+if 'cookie_checked' not in st.session_state:
+    time.sleep(0.7)
+    st.session_state['cookie_checked'] = True
+
+# --- 2. ПРОВЕРКА СУЩЕСТВУЮЩЕЙ КУКИ ---
+saved_key = cookie_manager.get(cookie="aida_access_token")
+
+if 'authenticated' not in st.session_state:
+    st.session_state['authenticated'] = False
+
+# Если нашли ключ в браузере и мы еще не вошли
+if saved_key and not st.session_state['authenticated']:
+    # Здесь мы идем в базу данных проверить этот ключ
+    conn = sqlite3.connect('aida_production_v12.db')
+    c = conn.cursor()
+    c.execute("SELECT owner_name FROM keys WHERE license_key = ?", (saved_key,))
+    result = c.fetchone()
+    conn.close()
+
+    if result:
+        st.session_state['authenticated'] = True
+        st.session_state['user_name'] = result[0]
+        st.session_state['is_admin'] = (result[0] in ["Tony Stark", "Админ", "тапок"])
+        st.rerun()
+
+# --- 3. ДАЛЬШЕ ИДЕТ ВАШ ОБЫЧНЫЙ КОД (ВХОД И МЕНЮ) ---
+if not st.session_state['authenticated']:
+    # Окно ввода ключа, если куки нет...
+    
 # --- 1. ТЕХНИЧЕСКИЕ НАСТРОЙКИ И HWID ---
 def get_device_id():
     raw_id = f"{platform.node()}-{platform.processor()}-{platform.system()}"
