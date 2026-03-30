@@ -29,7 +29,7 @@ def init_db():
     c.execute('CREATE TABLE IF NOT EXISTS global_chat (id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT, msg TEXT, time TEXT)')
     
     # Создаем админа по умолчанию
-    c.execute("INSERT OR IGNORE INTO users VALUES ('Админ', 'AIDA2026', 1)")
+    c.execute("INSERT OR IGNORE INTO users VALUES ('тапок', 'AIDA2026', 1)")
     
     # Первичные рецепты AkzoNobel
     c.execute("SELECT COUNT(*) FROM recipes")
