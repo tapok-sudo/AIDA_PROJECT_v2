@@ -41,10 +41,84 @@ def init_db():
     # Наполнение базы AkzoNobel
     c.execute("SELECT COUNT(*) FROM recipes WHERE is_custom=0")
     if c.fetchone()[0] == 0:
-        base_data = [
-            ('BMW', '475', 'Black Sapphire', '4000:450,4802:40,4906:10', 'M937'),
-            ('Audi', 'LY7C', 'Nardo Grey', '4000:300,4110:150,4020:40', 'M837'),
-            ('Mercedes', '197', 'Obsidian Black', '4000:400,4802:80,4906:5', 'M940')
+            base_data = [
+            # --- BMW ---
+            ('BMW', '475', 'Black Sapphire', '4000:450,4802:40,4906:10,4003:5', 'M937'),
+            ('BMW', '300', 'Alpinweiss III', '4000:500,4001:5,4003:2', 'M837'),
+            ('BMW', 'A96', 'Mineral White', '4000:440,4603:60,4902:10', 'M940'),
+            ('BMW', 'C31', 'Portimao Blue', '4502:200,4505:150,4802:50', 'M955'),
+            ('BMW', '416', 'Carbon Black', '4000:480,4501:15,4802:5', 'M938'),
+            # --- AUDI / VW ---
+            ('Audi', 'LY7C', 'Nardo Grey', '4000:300,4110:150,4020:40,4030:10', 'M837'),
+            ('Audi', 'LS9R', 'Gletscherweiss', '4000:430,4603:65,4902:5', 'M941'),
+            ('Audi', 'LY9B', 'Brillantschwarz', '4000:500,4110:2', 'M838'),
+            ('Audi', 'LX7W', 'Ice Silver', '4802:300,4801:150,4000:50', 'M942'),
+            ('VW', 'LC9X', 'Deep Black', '4000:460,4802:30,4110:10', 'M939'),
+            # --- MERCEDES-BENZ ---
+            ('Mercedes', '197', 'Obsidian Black', '4000:430,4802:55,4906:15', 'M940'),
+            ('Mercedes', '149', 'Polar White', '4000:500,4030:2,4110:1', 'M840'),
+            ('Mercedes', '775', 'Iridium Silver', '4802:350,4803:100,4000:50', 'M943'),
+            ('Mercedes', '799', 'Diamond White', '4000:450,4601:45,4902:5', 'M944'),
+            ('Mercedes', '040', 'Schwarz', '4000:500', 'M841'),
+            # --- TOYOTA / LEXUS ---
+            ('Toyota', '070', 'White Crystal', '4000:440,4603:60,4003:5', 'M945'),
+            ('Toyota', '202', 'Black', '4000:500', 'M842'),
+            ('Toyota', '1G3', 'Magnetic Grey', '4802:200,4000:150,4110:80,4803:70', 'M946'),
+            ('Toyota', '040', 'Super White II', '4000:500,4020:3', 'M843'),
+            ('Lexus', '085', 'Eminent White', '4000:445,4602:50,4902:5', 'M947'),
+            # --- MAZDA (Soul Red & Others) ---
+            ('Mazda', '46V', 'Soul Red Crystal', '46V-B:250,46V-M:150,4000:5', 'M948'),
+            ('Mazda', '41V', 'Soul Red', '4000:200,4508:150,4601:100', 'M949'),
+            ('Mazda', '46G', 'Machine Grey', '4805:300,4000:100,4110:100', 'M950'),
+            ('Mazda', '25D', 'Snowflake White', '4000:450,4603:45,4902:5', 'M951'),
+            ('Mazda', '34K', 'Crystal White', '4000:460,4602:40', 'M952'),
+            # --- HYUNDAI / KIA ---
+            ('KIA', 'SWP', 'Snow White Pearl', '4000:440,4603:55,4003:5', 'M953'),
+            ('KIA', 'ABP', 'Aurora Black', '4000:455,4802:35,4601:10', 'M954'),
+            ('Hyundai', 'WC9', 'White Cream', '4000:450,4601:45,4002:5', 'M955'),
+            ('Hyundai', 'SAE', 'Shiny Silver', '4802:380,4801:100,4000:20', 'M956'),
+            ('Hyundai', 'M8S', 'Columbian Brown', '4000:200,4110:150,4802:100,4030:50', 'M957'),
+            # --- FORD ---
+            ('Ford', 'YZ', 'Oxford White', '4000:500,4020:5,4030:2', 'M844'),
+            ('Ford', 'J7', 'Magnetic Grey', '4803:250,4000:150,4110:100', 'M958'),
+            ('Ford', 'UH', 'Tuxedo Black', '4000:450,4802:40,4905:10', 'M959'),
+            # --- PORSCHE ---
+            ('Porsche', 'C9X', 'Jet Black', '4000:460,4802:35,4110:5', 'M960'),
+            ('Porsche', '0Q1', 'White', '4000:500,4001:2', 'M845'),
+            ('Porsche', 'M7Z', 'GT Silver', '4805:400,4000:50,4110:50', 'M961'),
+            # --- TESLA ---
+            ('Tesla', 'PPSW', 'Pearl White', '4000:440,4603:50,4902:10', 'M962'),
+            ('Tesla', 'PBSB', 'Black', '4000:500', 'M846'),
+            ('Tesla', 'PMNG', 'Midnight Silver', '4802:250,4000:150,4110:100', 'M963'),
+            # --- LAND ROVER ---
+            ('L-Rover', '1AG', 'Santorini Black', '4000:440,4802:40,4906:20', 'M964'),
+            ('L-Rover', '867', 'Fuji White', '4000:500,4030:5', 'M847'),
+            # --- HONDA ---
+            ('Honda', 'NH731P', 'Crystal Black', '4000:450,4802:40,4906:10', 'M965'),
+            ('Honda', 'NH603P', 'White Diamond', '4000:445,4603:50,4003:5', 'M966'),
+            # --- NISSAN ---
+            ('Nissan', 'G41', 'Black', '4000:450,4802:45,4601:5', 'M967'),
+            ('Nissan', 'QAB', 'White Pearl', '4000:440,4602:55,4003:5', 'M968'),
+            # --- RENAULT ---
+            ('Renault', '676', 'Noir Nacré', '4000:440,4802:50,4110:10', 'M969'),
+            ('Renault', 'D69', 'Gris Platine', '4802:400,4110:80,4000:20', 'M970'),
+            # --- VOLVO ---
+            ('Volvo', '717', 'Onyx Black', '4000:450,4802:40,4906:10', 'M971'),
+            ('Volvo', '614', 'Ice White', '4000:500,4030:3', 'M848'),
+            # --- MITSUBISHI ---
+            ('Mitsubishi', 'X42', 'Black Pearl', '4000:455,4802:40,4110:5', 'M972'),
+            ('Mitsubishi', 'W13', 'White Pearl', '4000:445,4603:50,4002:5', 'M973'),
+            # --- SKODA ---
+            ('Skoda', 'F9E', 'Candy White', '4000:500,4020:2', 'M849'),
+            ('Skoda', 'F9R', 'Black Magic', '4000:460,4802:30,4906:10', 'M974'),
+            # --- PEUGEOT ---
+            ('Peugeot', 'KTV', 'Noir Perla Nera', '4000:450,4802:40,4110:10', 'M975'),
+            ('Peugeot', 'EWP', 'Blanc Banquise', '4000:500,4030:5', 'M850'),
+            # --- Спецэффекты (Akzo Pro) ---
+            ('Akzo', '4000', 'Pure Black', '4000:500', 'BASE'),
+            ('Akzo', '4802', 'Fine Silver', '4802:500', 'SILV'),
+            ('Akzo', '4906', 'Deep Blue Pearl', '4906:500', 'PEARL'),
+            ('Akzo', '4603', 'White Pearl XL', '4603:500', 'PEARL')
         ]
         c.executemany("INSERT INTO recipes (mark, code, name, components, vykraska) VALUES (?,?,?,?,?)", base_data)
     
