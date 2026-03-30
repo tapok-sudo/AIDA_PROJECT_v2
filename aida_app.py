@@ -60,7 +60,7 @@ def init_db():
         for i in range(1, 16):
             real_formulas.append(('Система', 'MIX', f'CODE-{i}', 'Custom Mix', f'4000:{200+i},4110:50,4003:5', 'Техническая формула', 0))
             
-        c.executemany("INSERT INTO recipes (author, mark, code, name, components, notes, is_rare) VALUES (?,?,?,?,?,?,?)", real_formulas)
+        c.executemany("INSERT INTO recipes (author, mark, code, name, components, notes, is_rare) VALUES (?, ?, ?, ?, ?, ?, ?)", real_formulas)
     conn.commit()
     conn.close()
 
