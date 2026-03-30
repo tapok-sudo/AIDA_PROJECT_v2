@@ -1,145 +1,202 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-import hashlib
-import os
 from datetime import datetime, timedelta
+import extra_streamlit_components as stx
+import uuid
 
-# --- 1. CONFIG & MOBILE OPTIMIZATION ---
-st.set_page_config(
-    page_title="AIDA OS", 
-    page_icon="🦾", 
-    layout="centered", # Центрированный лейаут лучше для узких экранов телефонов
-    initial_sidebar_state="collapsed"
-)
+# --- 1. НАСТРОЙКИ И МОБИЛЬНЫЙ СТИЛЬ ---
+st.set_page_config(page_title="AIDA OS", page_icon="🦾", layout="centered", initial_sidebar_state="collapsed")
 
-# Ультра-легкий CSS для скорости загрузки
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap');
     .stApp { background-color: #0d1117; color: #c9d1d9; font-family: 'Roboto Mono', monospace; }
-    .stButton>button { width: 100%; border-radius: 2px; background-color: #21262d; border: 1px solid #30363d; color: #58a6ff; font-weight: bold;}
-    .formula-card { background: #161b22; border: 1px solid #30363d; padding: 15px; border-radius: 4px; margin-bottom: 10px; }
-    .stInput>div>div>input { background-color: #0d1117; border: 1px solid #30363d; color: #c9d1d9; }
+    /* Мобильные кнопки */
+    .stButton>button { width: 100%; border-radius: 4px; background-color: #21262d; border: 1px solid #30363d; color: #58a6ff; font-weight: bold; padding: 10px; }
+    .stButton>button:active { background-color: #30363d; }
+    /* Карточки и поля */
+    .stTextInput>div>div>input, .stNumberInput>div>div>input { background-color: #0d1117; color: white; border: 1px solid #30363d; border-radius: 4px; }
+    div[data-testid="stExpander"] { background-color: #161b22; border: 1px solid #30363d; border-radius: 6px; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. FAST DATABASE ENGINE ---
+# --- 2. УПРАВЛЕНИЕ COOKIES (СЕССИЯ НА 10 ЛЕТ) ---
+@st.cache_resource(experimental_allow_widgets=True)
+def get_cookie_manager():
+    return stx.CookieManager()
+
+cookie_manager = get_cookie_manager()
+
+# --- 3. ЯДРО БАЗЫ ДАННЫХ И ЛОГОВ ---
 def init_db():
-    conn = sqlite3.connect('aida_fast_v1.db')
+    conn = sqlite3.connect('aida_stable.db')
     c = conn.cursor()
-    # Таблица ключей
-    c.execute('''CREATE TABLE IF NOT EXISTS keys 
-                 (key TEXT PRIMARY KEY, owner TEXT, is_admin INTEGER DEFAULT 0)''')
-    # Таблица рецептов
-    c.execute('''CREATE TABLE IF NOT EXISTS recipes 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, mark TEXT, code TEXT, components TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS keys (license_key TEXT PRIMARY KEY, owner_name TEXT, device_token TEXT, is_admin INTEGER DEFAULT 0)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT, action TEXT, timestamp DATETIME)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS recipes (id INTEGER PRIMARY KEY AUTOINCREMENT, mark TEXT, code TEXT, components TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS chat (id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT, message TEXT, timestamp DATETIME)''')
     
-    # Наполнение если пусто
+    # Наполнение базовыми рецептами (если пусто)
     c.execute("SELECT COUNT(*) FROM recipes")
     if c.fetchone()[0] == 0:
-        data = [
-            ('BMW', '475', 'Black:350,Silver:50'),
-            ('TOYOTA', '070', 'White:400,Pearl:25'),
+        base_recipes = [
+            ('BMW', '475', '4003:496.4,4700:0.2,4656:0.1'),
+            ('TOYOTA', '070', 'White:400,Pearl:25.5,Clear:100'),
             ('MAZDA', '41V', 'Red Base:300,Deep Red:100')
         ]
-        c.executemany("INSERT INTO recipes (mark, code, components) VALUES (?,?,?)", data)
-    
-    # Дефолтный админ ключ (замените на свой)
-    c.execute("INSERT OR IGNORE INTO keys (key, owner, is_admin) VALUES ('ROOT_KEY', 'AIDA_OWNER', 1)")
-    
+        c.executemany("INSERT INTO recipes (mark, code, components) VALUES (?,?,?)", base_recipes)
     conn.commit()
     conn.close()
 
+def write_log(user, action):
+    try:
+        conn = sqlite3.connect('aida_stable.db')
+        conn.cursor().execute("INSERT INTO logs (user, action, timestamp) VALUES (?, ?, ?)", (user, action, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        conn.commit(); conn.close()
+    except: pass
+
+def cleanup_logs():
+    try:
+        conn = sqlite3.connect('aida_stable.db')
+        limit_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+        conn.cursor().execute("DELETE FROM logs WHERE timestamp < ?", (limit_date,))
+        conn.commit(); conn.execute("VACUUM"); conn.close()
+    except: pass
+
 init_db()
 
-# --- 3. MOBILE AUTH (SIMPLE & FAST) ---
-if 'auth' not in st.session_state: st.session_state['auth'] = False
+# --- 4. ЛОГИКА АВТОРИЗАЦИИ (БРОНЯ) ---
+if 'auth' not in st.session_state:
+    st.session_state.update({'auth': False, 'user': None, 'admin': False})
 
+# Проверка куки при старте
+saved_token = cookie_manager.get(cookie="aida_token")
+if saved_token and not st.session_state['auth']:
+    if saved_token == st.secrets.get("ADMIN_CODE", "ROOT_777"): # В fallback можно поставить свой код
+        st.session_state.update({'auth': True, 'user': 'ROOT', 'admin': True})
+    else:
+        conn = sqlite3.connect('aida_stable.db')
+        res = conn.cursor().execute("SELECT owner_name, is_admin FROM keys WHERE device_token = ?", (saved_token,)).fetchone()
+        conn.close()
+        if res:
+            st.session_state.update({'auth': True, 'user': res[0], 'admin': bool(res[1])})
+
+# Экран входа
 if not st.session_state['auth']:
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    st.markdown("<h3 style='text-align: center; color: #58a6ff;'>AIDA SYSTEM</h3>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; font-size: 12px;'>INDUSTRIAL ACCESS</p>", unsafe_allow_html=True)
+    st.markdown("<br><br><h2 style='text-align: center; color: #58a6ff;'>AIDA SYSTEM</h2>", unsafe_allow_html=True)
+    input_key = st.text_input("КЛЮЧ ДОСТУПА", type="password", placeholder="Введите ключ")
     
-    # Простой ввод ключа для телефона
-    user_key = st.text_input("ACCESS KEY", type="password", placeholder="Введите ваш ключ")
-    
-    if st.button("AUTHORIZE"):
-        if user_key:
-            conn = sqlite3.connect('aida_fast_v1.db')
+    if st.button("АКТИВИРОВАТЬ"):
+        admin_code = st.secrets.get("ADMIN_CODE", "ROOT_777")
+        if input_key == admin_code:
+            cookie_manager.set("aida_token", admin_code, expires_at=datetime.now() + timedelta(days=3650))
+            st.success("ДОСТУП РАЗРЕШЕН (ROOT)")
+            st.rerun()
+        else:
+            conn = sqlite3.connect('aida_stable.db')
             c = conn.cursor()
-            c.execute("SELECT owner, is_admin FROM keys WHERE key = ?", (user_key,))
-            res = c.fetchone()
-            conn.close()
+            res = c.execute("SELECT owner_name, device_token FROM keys WHERE license_key = ?", (input_key,)).fetchone()
             
             if res:
-                st.session_state.update({"auth": True, "name": res[0], "admin": bool(res[1])})
-                st.rerun()
+                owner, saved_token = res
+                if not saved_token:
+                    # Привязка нового устройства
+                    new_device_token = str(uuid.uuid4())
+                    c.execute("UPDATE keys SET device_token = ? WHERE license_key = ?", (new_device_token, input_key))
+                    conn.commit()
+                    cookie_manager.set("aida_token", new_device_token, expires_at=datetime.now() + timedelta(days=3650))
+                    st.rerun()
+                else:
+                    st.error("ОШИБКА: Ключ уже привязан к другому устройству.")
             else:
-                st.error("INVALID KEY")
+                st.error("НЕДЕЙСТВИТЕЛЬНЫЙ КЛЮЧ")
+            conn.close()
     st.stop()
 
-# --- 4. MAIN INTERFACE (MOBILE FIRST) ---
-# Кнопка выхода в углу
-col_u, col_o = st.columns([4, 1])
-col_u.write(f"OP: {st.session_state.name}")
-if col_o.button("EXIT"):
+# --- 5. ГЛАВНОЕ МЕНЮ (ДЛЯ ТЕЛЕФОНА) ---
+col1, col2 = st.columns([3, 1])
+col1.markdown(f"**OP:** `{st.session_state['user']}`")
+if col2.button("ВЫХОД"):
+    cookie_manager.delete("aida_token")
     st.session_state.clear()
     st.rerun()
 
+menu_options = ["🧪 ЛАБОРАТОРИЯ", "💬 ЧАТ"]
+if st.session_state['admin']: menu_options.append("⚙️ АДМИН-ПАНЕЛЬ")
+menu = st.selectbox("НАВИГАЦИЯ:", menu_options)
+
 st.markdown("---")
 
-# Меню на телефоне лучше делать через Selectbox вверху
-mode = st.selectbox("SECTION:", ["SEARCH DATABASE", "ADMIN"] if st.session_state.admin else ["SEARCH DATABASE"])
-
-if mode == "SEARCH DATABASE":
-    st.subheader("FIND FORMULA")
-    # Поиск по коду или марке
-    search = st.text_input("Enter Code or Mark:", placeholder="Example: 41V")
-    
+# --- РАЗДЕЛ: ЛАБОРАТОРИЯ ---
+if menu == "🧪 ЛАБОРАТОРИЯ":
+    search = st.text_input("ПОИСК ФОРМУЛЫ (Код или Марка):")
     if search:
-        conn = sqlite3.connect('aida_fast_v1.db')
-        df = pd.read_sql(f"SELECT * FROM recipes WHERE code LIKE '%{search}%' OR mark LIKE '%{search}%' LIMIT 10", conn)
+        conn = sqlite3.connect('aida_stable.db')
+        df = pd.read_sql(f"SELECT * FROM recipes WHERE code LIKE '%{search}%' OR mark LIKE '%{search}%'", conn)
         conn.close()
         
         if df.empty:
-            st.warning("Formula not found.")
+            st.warning("Формула не найдена.")
         else:
             for _, r in df.iterrows():
-                # Карточка рецепта в мобильном стиле
-                with st.container():
-                    st.markdown(f"""
-                    <div class="formula-card">
-                        <span style="color: #58a6ff; font-weight: bold; font-size: 18px;">{r['mark']} {r['code']}</span>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    # Разбор компонентов
+                with st.expander(f"🔴 {r['mark']} | Код: {r['code']}"):
                     comps = [i.split(":") for i in r['components'].split(",") if ":" in i]
+                    target_w = st.number_input("Общий вес (г):", 10, 5000, 500, key=f"w_{r['id']}")
+                    ratio = target_w / sum([float(i[1]) for i in comps])
                     
-                    # Ввод веса (удобно для пальца)
-                    target_w = st.number_input(f"Required Weight (g):", 10, 5000, 500, step=10, key=f"inp_{r['id']}")
-                    
-                    # Расчет
-                    total_parts = sum([float(i[1]) for i in comps])
-                    ratio = target_w / total_parts
-                    
-                    # Таблица налива
-                    for c_name, c_val in comps:
-                        st.markdown(f"**{c_name}**: `{round(float(c_val)*ratio, 1)} g`")
-                    st.markdown("---")
+                    for name, val in comps:
+                        st.markdown(f"**{name}**: `{round(float(val)*ratio, 1)} g`")
 
-elif mode == "ADMIN" and st.session_state.admin:
-    st.subheader("ROOT PANEL")
-    new_k = st.text_input("NEW KEY STRING")
-    new_o = st.text_input("CLIENT NAME")
-    if st.button("GENERATE KEY"):
-        if new_k and new_o:
-            conn = sqlite3.connect('aida_fast_v1.db')
-            try:
-                conn.cursor().execute("INSERT INTO keys (key, owner) VALUES (?,?)", (new_k, new_o))
-                conn.commit()
-                st.success("New key created successfully.")
-            except:
-                st.error("Key already exists.")
-            conn.close()
+# --- РАЗДЕЛ: ЧАТ ---
+elif menu == "💬 ЧАТ":
+    with st.form("chat_form", clear_on_submit=True):
+        msg = st.text_input("Сообщение:")
+        if st.form_submit_button("ОТПРАВИТЬ") and msg:
+            conn = sqlite3.connect('aida_stable.db')
+            conn.cursor().execute("INSERT INTO chat (user, message, timestamp) VALUES (?,?,?)", (st.session_state['user'], msg, datetime.now()))
+            conn.commit(); conn.close()
+            st.rerun()
+            
+    conn = sqlite3.connect('aida_stable.db')
+    chat_df = pd.read_sql("SELECT * FROM chat ORDER BY timestamp DESC LIMIT 30", conn)
+    conn.close()
+    
+    for _, m in chat_df.iterrows():
+        st.markdown(f"<div style='background:#161b22; padding:10px; border-radius:5px; margin-bottom:5px;'><b>{m['user']}</b>: {m['message']}</div>", unsafe_allow_html=True)
+
+# --- РАЗДЕЛ: АДМИН-ПАНЕЛЬ ---
+elif menu == "⚙️ АДМИН-ПАНЕЛЬ" and st.session_state['admin']:
+    cleanup_logs() # Автоочистка логов старше 30 дней
+    t1, t2, t3 = st.tabs(["КЛЮЧИ", "ЧАТ (МОДЕРАЦИЯ)", "ЛОГИ"])
+    
+    with t1:
+        new_k = st.text_input("НОВЫЙ КЛЮЧ (Напр. AIDA-001)")
+        new_o = st.text_input("ИМЯ КЛИЕНТА")
+        if st.button("СОЗДАТЬ КЛЮЧ"):
+            if new_k and new_o:
+                conn = sqlite3.connect('aida_stable.db')
+                try:
+                    conn.cursor().execute("INSERT INTO keys (license_key, owner_name) VALUES (?,?)", (new_k, new_o))
+                    conn.commit(); write_log("ROOT", f"Создан ключ {new_k}")
+                    st.success("Ключ успешно создан!")
+                except: st.error("Ключ уже существует.")
+                conn.close()
+                
+    with t2:
+        conn = sqlite3.connect('aida_stable.db')
+        mod_df = pd.read_sql("SELECT * FROM chat ORDER BY timestamp DESC LIMIT 50", conn)
+        conn.close()
+        for _, msg in mod_df.iterrows():
+            c1, c2 = st.columns([4, 1])
+            c1.write(f"**{msg['user']}**: {msg['message']}")
+            if c2.button("УДАЛИТЬ", key=f"del_{msg['id']}"):
+                conn = sqlite3.connect('aida_stable.db')
+                conn.cursor().execute("DELETE FROM chat WHERE id = ?", (msg['id'],))
+                conn.commit(); conn.close()
+                st.rerun()
+                
+    with t3:
+        conn = sqlite3.connect('aida_stable.db')
+        st.dataframe(pd.read_sql("SELECT * FROM logs ORDER BY timestamp DESC", conn), use_container_width=True)
+        conn.close()
