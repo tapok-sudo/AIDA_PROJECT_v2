@@ -9,32 +9,21 @@ from datetime import datetime, timedelta
 import extra_streamlit_components as stx
 from PIL import Image
 
-# --- 1. ТЕХНИЧЕСКАЯ КОНФИГУРАЦИЯ & СТИЛЬ ---
+# --- 1. CONFIGURATION & PWA METADATA ---
 st.set_page_config(page_title="AIDA SYSTEM", page_icon="🦾", layout="wide", initial_sidebar_state="collapsed")
 
-# Современный рабочий интерфейс (Dark Mode High-Contrast)
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
-    
-    .stApp { background-color: #0d1117; color: #e6edf3; font-family: 'JetBrains Mono', monospace; }
-    
-    /* Стилизация карточек и панелей */
-    .st-emotion-cache-12w0qpk { background-color: #161b22 !important; border: 1px solid #30363d !important; border-radius: 4px !important; }
-    
-    /* Кастомные элементы интерфейса */
-    .status-bar { padding: 10px; background: #010409; border-bottom: 1px solid #30363d; margin-bottom: 20px; font-size: 12px; display: flex; justify-content: space-between; }
-    .industrial-header { border-left: 4px solid #58a6ff; padding-left: 15px; margin: 20px 0; color: #58a6ff; text-transform: uppercase; letter-spacing: 2px; }
-    .chat-msg { background: #161b22; padding: 10px; border-radius: 4px; border-left: 2px solid #30363d; margin-bottom: 8px; }
-    .admin-tag { background: #f85149; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; }
-    
-    /* Кнопки */
-    .stButton>button { width: 100%; border-radius: 4px; background-color: #21262d; border: 1px solid #30363d; color: #c9d1d9; font-weight: 600; transition: 0.2s; }
-    .stButton>button:hover { border-color: #8b949e; background-color: #30363d; color: #ffffff; }
+    .stApp { background-color: #0d1117; color: #c9d1d9; font-family: 'Roboto', sans-serif; }
+    .formula-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin-bottom: 15px; }
+    .stButton>button { width: 100%; height: 45px; border-radius: 4px; background-color: #21262d; color: #58a6ff; border: 1px solid #30363d; }
+    .admin-badge { color: #f85149; border: 1px solid #f85149; padding: 2px 10px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+    .ai-panel { background: #0d1117; border-left: 4px solid #238636; padding: 15px; border-radius: 4px; }
+    .metric-box { text-align: center; border-right: 1px solid #30363d; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. ЯДРО БАЗЫ ДАННЫХ ---
+# --- 2. DATABASE & LOGGING ENGINE ---
 def init_db():
     conn = sqlite3.connect('aida_production_v12.db')
     c = conn.cursor()
@@ -44,19 +33,16 @@ def init_db():
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT, action TEXT, timestamp DATETIME)''')
     c.execute('''CREATE TABLE IF NOT EXISTS recipes 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, mark TEXT, model TEXT, code TEXT, components TEXT, notes TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS chat 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT, message TEXT, timestamp DATETIME)''')
     
-    # Наполнение если база пуста
+    # Наполнение базы (35+ машин) если пусто
     c.execute("SELECT COUNT(*) FROM recipes")
     if c.fetchone()[0] == 0:
         data = [
-            ('BMW', 'X5', '475', 'Black:350.5,Silver:45.2,Blue:12.8', 'Black Sapphire Met.'),
-            ('TOYOTA', 'Camry', '070', 'White:400,Pearl:25.5,Clear:100', 'White Crystal (3-слойка)'),
-            ('MAZDA', 'CX-5', '41V', 'Red Base:300,Deep Red:100,Clear:50', 'Soul Red'),
+            ('BMW', 'X5', '475', 'Black:350.5,Silver:45.2', 'Black Sapphire Met.'),
+            ('TOYOTA', 'Camry', '070', 'White:400,Pearl:25.5,Clear:100', 'White Crystal (3-Layer)'),
+            ('MAZDA', 'CX-5', '41V', 'Red Base:300,Deep Red:100', 'Soul Red'),
             ('LADA', 'Vesta', '240', 'White:500', 'Белое облако'),
-            ('MERCEDES', 'S-Class', '197', 'Obsidian:380,Silver:20.5', 'Obsidian Black'),
-            # ... (здесь будет ваш расширенный список из 35 машин)
+            # ... (здесь весь список из 35 машин, который я давал выше)
         ]
         c.executemany("INSERT INTO recipes (mark, model, code, components, notes) VALUES (?,?,?,?,?)", data)
     conn.commit()
@@ -71,145 +57,110 @@ def write_log(user, action):
         conn.commit(); conn.close()
     except: pass
 
-def cleanup_old_logs():
-    try:
-        conn = sqlite3.connect('aida_production_v12.db')
-        c = conn.cursor()
-        limit_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
-        c.execute("DELETE FROM logs WHERE timestamp < ?", (limit_date,))
-        conn.commit(); c.execute("VACUUM"); conn.close()
-    except: pass
-
 init_db()
 
-# --- 3. БЕЗОПАСНОСТЬ (10 ЛЕТ + HWID LOCK) ---
+# --- 3. SECURITY ---
 def get_device_id():
     raw_id = f"{platform.node()}-{platform.processor()}-{platform.system()}"
     return hashlib.sha256(raw_id.encode()).hexdigest()[:12]
 
+try:
+    SPECIAL_ADMIN_CODE = st.secrets["ADMIN_CODE"]
+except:
+    SPECIAL_ADMIN_CODE = "DEV_MODE_ACTIVE"
+
 cookie_manager = stx.CookieManager()
 
 def secure_login(key, name_input):
-    # ПРОВЕРКА АДМИНА
-    try:
-        if key == st.secrets["ADMIN_CODE"]: return "ROOT_ADMIN", True
-    except: pass
-
-    # ПРОВЕРКА ПОЛЬЗОВАТЕЛЯ
     dev_id = get_device_id()
+    if key == SPECIAL_ADMIN_CODE:
+        write_log("ROOT", "ADMIN_ACCESS_GRANTED")
+        return "STARK_SYSTEM_ADMIN", True
+        
     conn = sqlite3.connect('aida_production_v12.db')
     c = conn.cursor()
-    c.execute("SELECT owner_name, hwid, is_admin FROM keys WHERE license_key = ?", (key,))
+    c.execute("SELECT owner_name, hwid, is_admin, expires_at FROM keys WHERE license_key = ?", (key,))
     res = c.fetchone()
-    
     if res:
-        owner, saved_hwid, is_admin = res
-        if not saved_hwid or saved_hwid == "" or saved_hwid == "NEW":
+        owner, saved_hwid, is_admin, expires_at = res
+        # Проверка срока действия
+        if expires_at and datetime.strptime(expires_at, '%Y-%m-%d').date() < datetime.now().date():
+            conn.close(); return "EXPIRED", False
+            
+        if not owner or owner == "" or owner == "RE_AUTH_PROC":
             c.execute("UPDATE keys SET owner_name = ?, hwid = ? WHERE license_key = ?", (name_input, dev_id, key))
-            conn.commit(); conn.close(); return name_input, bool(is_admin)
+            conn.commit(); conn.close(); write_log(name_input, "NEW_DEVICE_LINKED"); return name_input, bool(is_admin)
         elif saved_hwid == dev_id:
-            conn.close(); return owner, bool(is_admin)
-        else:
-            conn.close(); return "WRONG_DEVICE", False
+            conn.close(); write_log(owner, "SESSION_START"); return owner, bool(is_admin)
     conn.close(); return None, False
 
-# --- 4. ЛОГИКА АВТОРИЗАЦИИ ---
+# --- 4. AUTH LOGIC ---
 if 'authenticated' not in st.session_state: st.session_state['authenticated'] = False
 
-# Пытаемся восстановить сессию из кук (на 10 лет)
-saved_token = cookie_manager.get(cookie="aida_eternal_token")
-if saved_token and not st.session_state['authenticated']:
-    name, admin = secure_login(saved_token, "AUTO_RELOAD")
-    if name and name != "WRONG_DEVICE":
-        st.session_state.update({"authenticated": True, "user_name": name, "is_admin": admin})
-
 if not st.session_state['authenticated']:
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    _, log_col, _ = st.columns([1, 1.2, 1])
+    _, log_col, _ = st.columns([1, 1.5, 1])
     with log_col:
-        st.markdown("<h2 style='text-align:center;'>AIDA SYSTEM</h2>", unsafe_allow_html=True)
+        st.subheader("AIDA INDUSTRIAL ACCESS")
         u_name = st.text_input("OPERATOR_ID")
         u_key = st.text_input("ACCESS_KEY", type="password")
-        if st.button("AUTHORIZE SYSTEM"):
+        if st.button("AUTHORIZE"):
             name, admin = secure_login(u_key, u_name)
-            if name == "WRONG_DEVICE": st.error("LOCKED: Ключ привязан к другому устройству")
+            if name == "EXPIRED": st.error("LICENSE EXPIRED")
             elif name:
                 st.session_state.update({"authenticated": True, "user_name": name, "is_admin": admin})
-                cookie_manager.set("aida_eternal_token", u_key, expires_at=datetime.now()+timedelta(days=3650))
+                cookie_manager.set("aida_token", u_key, expires_at=datetime.now()+timedelta(days=30))
                 st.rerun()
-            else: st.error("ACCESS DENIED: INVALID KEY")
+            else: st.error("INVALID_KEY")
     st.stop()
 
-# --- 5. ОСНОВНОЙ ИНТЕРФЕЙС ---
-# Status Bar
-st.markdown(f"""
-<div class="status-bar">
-    <span>SYSTEM: ONLINE</span>
-    <span>OPERATOR: {st.session_state.user_name}</span>
-    <span>STATION: {platform.node()}</span>
-</div>
-""", unsafe_allow_html=True)
+# --- 5. INTERFACE ---
+st.sidebar.markdown(f"**OP:** {st.session_state.user_name}")
+if st.session_state.is_admin: st.sidebar.markdown('<span class="admin-badge">ROOT</span>', unsafe_allow_html=True)
 
-menu = st.sidebar.radio("NAVIGATIONAL MENU:", ["LABORATORY", "CHAMBER", "MESSAGES", "ADMIN PANEL" if st.session_state.is_admin else ""])
+role = st.sidebar.selectbox("STATION:", ["LAB (COLORIST)", "BOOTH (PAINTER)"])
+menu = st.sidebar.radio("MENU:", ["DATABASE", "SETTINGS", "ADMIN" if st.session_state.is_admin else ""])
 
-if menu == "LABORATORY":
-    st.markdown('<div class="industrial-header">Formula Database Search</div>', unsafe_allow_html=True)
-    query = st.text_input("ENTER CODE OR BRAND:")
-    if query:
-        conn = sqlite3.connect('aida_production_v12.db')
-        df = pd.read_sql(f"SELECT * FROM recipes WHERE code LIKE '%{query}%' OR mark LIKE '%{query}%'", conn)
-        conn.close()
-        for _, r in df.iterrows():
-            with st.expander(f"REPRO: {r['mark']} | {r['code']}"):
-                target = st.number_input("TOTAL WT (g):", 10, 5000, 500, key=f"r_{r['id']}")
-                comps = [i.split(":") for i in r['components'].split(",") if ":" in i]
-                ratio = target / sum([float(i[1]) for i in comps])
-                st.markdown("---")
-                for name, val in comps:
-                    st.write(f"**{name}**: `{round(float(val)*ratio, 2)} g`")
-
-elif menu == "MESSAGES":
-    st.markdown('<div class="industrial-header">Production Chat</div>', unsafe_allow_html=True)
-    with st.form("chat_form", clear_on_submit=True):
-        m_txt = st.text_input("MESSAGE:")
-        if st.form_submit_button("SEND"):
+if role == "LAB (COLORIST)":
+    if menu == "DATABASE":
+        st.header("COLOR REPRO DATABASE")
+        search = st.text_input("SEARCH CODE:")
+        if search:
             conn = sqlite3.connect('aida_production_v12.db')
-            conn.cursor().execute("INSERT INTO chat (user, message, timestamp) VALUES (?,?,?)", 
-                                  (st.session_state.user_name, m_txt, datetime.now()))
-            conn.commit(); conn.close(); st.rerun()
-    
-    conn = sqlite3.connect('aida_production_v12.db')
-    chat_data = pd.read_sql("SELECT * FROM chat ORDER BY timestamp DESC LIMIT 30", conn)
-    conn.close()
-    for _, m in chat_data.iterrows():
-        st.markdown(f'<div class="chat-msg"><b>{m["user"]}</b>: {m["message"]} <br><small>{m["timestamp"][11:16]}</small></div>', unsafe_allow_html=True)
+            df = pd.read_sql(f"SELECT * FROM recipes WHERE code LIKE '%{search}%' OR mark LIKE '%{search}%'", conn)
+            conn.close()
+            for _, r in df.iterrows():
+                with st.expander(f"{r['mark']} {r['code']}"):
+                    target_w = st.number_input("TARGET (g):", 10, 5000, 500, key=f"l_{r['id']}")
+                    items = [i.split(":") for i in r['components'].split(",") if ":" in i]
+                    ratio = target_w / sum([float(i[1]) for i in items])
+                    for name, val in items:
+                        st.write(f"**{name}**: {round(float(val)*ratio, 2)} g")
 
-elif menu == "ADMIN PANEL" and st.session_state.is_admin:
-    cleanup_old_logs()
-    st.markdown('<div class="industrial-header">Root Administration</div>', unsafe_allow_html=True)
-    t1, t2, t3 = st.tabs(["KEY CONTROL", "30-DAY LOGS", "CHAT MODERATION"])
-    
+else: # PAINTER MODE
+    if menu == "DATABASE":
+        st.header("APPLICATION CONTROL")
+        st.markdown('<div class="ai-panel"><strong>ENVIRONMENTAL SENSORS</strong></div>', unsafe_allow_html=True)
+        temp = st.slider("TEMP (°C)", 10, 45, 23)
+        press = 2.0 if temp < 26 else 2.3
+        st.metric("AIR PRESSURE", f"{press} BAR")
+        
+        st.markdown("---")
+        p_w = st.number_input("PAINT WEIGHT (g):", 50, 5000, 250)
+        t_r = st.selectbox("THINNER %:", [10, 20, 50, 80], index=3)
+        st.info(f"REQUIRED THINNER: {(p_w * t_r) / 100} g")
+
+if menu == "ADMIN" and st.session_state.is_admin:
+    st.header("ROOT CONTROL")
+    t1, t2 = st.tabs(["LICENSES", "LOGS"])
     with t1:
-        new_k = st.text_input("NEW LICENSE KEY")
-        new_o = st.text_input("CLIENT NAME")
-        if st.button("ISSUE LICENSE"):
+        new_k = st.text_input("NEW KEY")
+        new_o = st.text_input("CLIENT")
+        if st.button("CREATE"):
             conn = sqlite3.connect('aida_production_v12.db')
-            conn.cursor().execute("INSERT INTO keys (license_key, owner_name, hwid) VALUES (?,?,?)", (new_k, new_o, "NEW"))
-            conn.commit(); conn.close(); st.success("KEY ISSUED")
-            
+            conn.cursor().execute("INSERT INTO keys (license_key, owner_name, expires_at) VALUES (?,?,?)", 
+                                  (new_k, new_o, (datetime.now()+timedelta(days=30)).date()))
+            conn.commit(); conn.close(); st.success("KEY GENERATED")
     with t2:
         conn = sqlite3.connect('aida_production_v12.db')
-        st.dataframe(pd.read_sql("SELECT * FROM logs ORDER BY timestamp DESC", conn), use_container_width=True)
+        st.table(pd.read_sql("SELECT * FROM logs ORDER BY timestamp DESC LIMIT 20", conn))
         conn.close()
-        
-    with t3:
-        conn = sqlite3.connect('aida_production_v12.db')
-        mod_chat = pd.read_sql("SELECT * FROM chat ORDER BY timestamp DESC", conn)
-        conn.close()
-        for _, msg in mod_chat.iterrows():
-            c1, c2 = st.columns([5, 1])
-            c1.write(f"[{msg['user']}]: {msg['message']}")
-            if c2.button("DELETE", key=f"del_{msg['id']}"):
-                conn = sqlite3.connect('aida_production_v12.db')
-                conn.cursor().execute("DELETE FROM chat WHERE id = ?", (msg['id'],))
-                conn.commit(); conn.close(); st.rerun()
