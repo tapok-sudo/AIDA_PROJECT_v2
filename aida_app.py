@@ -20,7 +20,7 @@ st.markdown("""
 
 # --- БАЗА ДАННЫХ ---
 def init_db():
-    conn = sqlite3.connect('aida_ultimate_v1.db')
+    conn = sqlite3.connect('aida_clean_v1.db')
     c = conn.cursor()
     # Пользователи и ключи (привязка к устройству через имитацию token)
     c.execute('''CREATE TABLE IF NOT EXISTS users 
