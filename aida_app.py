@@ -34,7 +34,7 @@ def init_db():
     c.execute('CREATE TABLE IF NOT EXISTS chat (id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT, msg TEXT, time TEXT)')
     
     # Создание Админа
-    c.execute("INSERT OR IGNORE INTO users VALUES ('Админ', 'AIDA2026', 1)")
+    c.execute("INSERT OR IGNORE INTO users VALUES ('тапок', 'AIDA2026', 1)")
     
     # 30 ОРИГИНАЛЬНЫХ РЕЦЕПТОВ AKZONOBEL (Sikkens/Lesonal)
     c.execute("SELECT COUNT(*) FROM recipes")
