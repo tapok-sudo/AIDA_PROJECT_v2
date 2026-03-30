@@ -1,312 +1,215 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-import platform # Для определения системы
-import hashlib # Для генерации ID устройства (исправит последнюю ошибку)
-import secrets # Для генерации ключей
-import string # Для работы с текстом
-import time # Для пауз
+import platform
+import hashlib
+import time
+import os
 from datetime import datetime, timedelta
-import extra_streamlit_components as stx # Для куки
+import extra_streamlit_components as stx
+from PIL import Image
 
-# --- 1. ПРАВИЛЬНАЯ ИНИЦИАЛИЗАЦИЯ КУКИ (Без желтого экрана) ---
-def get_manager():
-    return stx.CookieManager()
+# --- 1. ТЕХНИЧЕСКАЯ КОНФИГУРАЦИЯ & СТИЛЬ ---
+st.set_page_config(page_title="AIDA SYSTEM", page_icon="🦾", layout="wide", initial_sidebar_state="collapsed")
 
-# Мы убрали @st.cache_resource, чтобы не было желтого предупреждения
-cookie_manager = get_manager()
+# Современный рабочий интерфейс (Dark Mode High-Contrast)
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+    
+    .stApp { background-color: #0d1117; color: #e6edf3; font-family: 'JetBrains Mono', monospace; }
+    
+    /* Стилизация карточек и панелей */
+    .st-emotion-cache-12w0qpk { background-color: #161b22 !important; border: 1px solid #30363d !important; border-radius: 4px !important; }
+    
+    /* Кастомные элементы интерфейса */
+    .status-bar { padding: 10px; background: #010409; border-bottom: 1px solid #30363d; margin-bottom: 20px; font-size: 12px; display: flex; justify-content: space-between; }
+    .industrial-header { border-left: 4px solid #58a6ff; padding-left: 15px; margin: 20px 0; color: #58a6ff; text-transform: uppercase; letter-spacing: 2px; }
+    .chat-msg { background: #161b22; padding: 10px; border-radius: 4px; border-left: 2px solid #30363d; margin-bottom: 8px; }
+    .admin-tag { background: #f85149; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; }
+    
+    /* Кнопки */
+    .stButton>button { width: 100%; border-radius: 4px; background-color: #21262d; border: 1px solid #30363d; color: #c9d1d9; font-weight: 600; transition: 0.2s; }
+    .stButton>button:hover { border-color: #8b949e; background-color: #30363d; color: #ffffff; }
+</style>
+""", unsafe_allow_html=True)
 
-# Даем браузеру время передать данные
-if 'startup_delay' not in st.session_state:
-    time.sleep(0.6)
-    st.session_state['startup_delay'] = True
-
-# --- 2. ПРОВЕРКА КЛЮЧА ---
-if 'authenticated' not in st.session_state:
-    st.session_state['authenticated'] = False
-
-# Пытаемся достать ключ из браузера
-saved_key = cookie_manager.get(cookie="aida_access_token")
-
-if saved_key and not st.session_state['authenticated']:
+# --- 2. ЯДРО БАЗЫ ДАННЫХ ---
+def init_db():
     conn = sqlite3.connect('aida_production_v12.db')
     c = conn.cursor()
-    c.execute("SELECT owner_name FROM keys WHERE license_key = ?", (saved_key,))
-    result = c.fetchone()
-    conn.close()
-    if result:
-        st.session_state['authenticated'] = True
-        st.session_state['user_name'] = result[0]
-        st.session_state['is_admin'] = (result[0] in ["Tony Stark", "Админ", "тапок"])
-        st.rerun()
-
-# --- 3. ДАЛЬШЕ ИДЕТ ВАШ ОБЫЧНЫЙ КОД (ВХОД И МЕНЮ) ---
-if not st.session_state['authenticated']:
-    st.title("A.I.D.A. Core: Вход в систему")
-    key_input = st.text_input("Введите ваш ключ доступа:", type="password")
+    c.execute('''CREATE TABLE IF NOT EXISTS keys 
+                 (license_key TEXT PRIMARY KEY, owner_name TEXT, hwid TEXT, is_admin INTEGER DEFAULT 0, expires_at DATE)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS logs 
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT, action TEXT, timestamp DATETIME)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS recipes 
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, mark TEXT, model TEXT, code TEXT, components TEXT, notes TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS chat 
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT, message TEXT, timestamp DATETIME)''')
     
-    if st.button("АКТИВИРОВАТЬ"):
-        # Ваша проверка в БД (как в строках 36-41)
+    # Наполнение если база пуста
+    c.execute("SELECT COUNT(*) FROM recipes")
+    if c.fetchone()[0] == 0:
+        data = [
+            ('BMW', 'X5', '475', 'Black:350.5,Silver:45.2,Blue:12.8', 'Black Sapphire Met.'),
+            ('TOYOTA', 'Camry', '070', 'White:400,Pearl:25.5,Clear:100', 'White Crystal (3-слойка)'),
+            ('MAZDA', 'CX-5', '41V', 'Red Base:300,Deep Red:100,Clear:50', 'Soul Red'),
+            ('LADA', 'Vesta', '240', 'White:500', 'Белое облако'),
+            ('MERCEDES', 'S-Class', '197', 'Obsidian:380,Silver:20.5', 'Obsidian Black'),
+            # ... (здесь будет ваш расширенный список из 35 машин)
+        ]
+        c.executemany("INSERT INTO recipes (mark, model, code, components, notes) VALUES (?,?,?,?,?)", data)
+    conn.commit()
+    conn.close()
+
+def write_log(user, action):
+    try:
         conn = sqlite3.connect('aida_production_v12.db')
         c = conn.cursor()
-        c.execute("SELECT owner_name FROM keys WHERE license_key = ?", (key_input,))
-        result = c.fetchone()
-        conn.close()
+        c.execute("INSERT INTO logs (user, action, timestamp) VALUES (?, ?, ?)", 
+                  (user, action, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        conn.commit(); conn.close()
+    except: pass
 
-        if result:
-            st.session_state['authenticated'] = True
-            st.session_state['user_name'] = result[0]
-            # СОХРАНЯЕМ КУКУ, ЧТОБЫ БОЛЬШЕ НЕ ВВОДИТЬ!
-            cookie_manager.set("aida_access_token", key_input, expires_at=datetime.now() + timedelta(days=30))
-            st.rerun()
-        else:
-            st.error("Неверный ключ!")
-    st.stop() # Остановка, пока не войдут
+def cleanup_old_logs():
+    try:
+        conn = sqlite3.connect('aida_production_v12.db')
+        c = conn.cursor()
+        limit_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+        c.execute("DELETE FROM logs WHERE timestamp < ?", (limit_date,))
+        conn.commit(); c.execute("VACUUM"); conn.close()
+    except: pass
 
-# ВСЁ, ЧТО НИЖЕ ЭТОЙ СТРОКИ, БУДЕТ ВИДНО ТОЛЬКО ПОСЛЕ ВХОДА
-# --- 1. ТЕХНИЧЕСКИЕ НАСТРОЙКИ И HWID ---
+init_db()
+
+# --- 3. БЕЗОПАСНОСТЬ (10 ЛЕТ + HWID LOCK) ---
 def get_device_id():
     raw_id = f"{platform.node()}-{platform.processor()}-{platform.system()}"
     return hashlib.sha256(raw_id.encode()).hexdigest()[:12]
 
-def generate_secure_key():
-    chars = string.ascii_uppercase + string.digits
-    return f"AIDA-{''.join(secrets.choice(chars) for _ in range(4))}-{''.join(secrets.choice(chars) for _ in range(4))}"
+cookie_manager = stx.CookieManager()
 
-st.set_page_config(page_title="A.I.D.A. Core System", page_icon="🤖", layout="wide")
+def secure_login(key, name_input):
+    # ПРОВЕРКА АДМИНА
+    try:
+        if key == st.secrets["ADMIN_CODE"]: return "ROOT_ADMIN", True
+    except: pass
 
-# --- СТИЛИЗАЦИЯ ИНТЕРФЕЙСА (TECH-STYLE) ---
-st.markdown("""
-<style>
-    .stApp { background-color: #0e1117; color: #e0e0e0; }
-    [data-testid="stSidebar"] { background-color: #05070a !important; border-right: 1px solid #1f2937; }
-    .stButton>button { background-color: #1f6feb; color: white; border-radius: 6px; border: none; width: 100%; font-weight: bold; }
-    .stButton>button:hover { background-color: #388bfd; border: none; color: white; }
-    .formula-card { background-color: #161b22; border-radius: 10px; padding: 18px; margin-bottom: 12px; border: 1px solid #30363d; }
-    .card-header { font-size: 18px; font-weight: bold; color: #58a6ff; margin-bottom: 4px; }
-    .component-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #21262d; font-family: 'Courier New', monospace; }
-</style>
+    # ПРОВЕРКА ПОЛЬЗОВАТЕЛЯ
+    dev_id = get_device_id()
+    conn = sqlite3.connect('aida_production_v12.db')
+    c = conn.cursor()
+    c.execute("SELECT owner_name, hwid, is_admin FROM keys WHERE license_key = ?", (key,))
+    res = c.fetchone()
+    
+    if res:
+        owner, saved_hwid, is_admin = res
+        if not saved_hwid or saved_hwid == "" or saved_hwid == "NEW":
+            c.execute("UPDATE keys SET owner_name = ?, hwid = ? WHERE license_key = ?", (name_input, dev_id, key))
+            conn.commit(); conn.close(); return name_input, bool(is_admin)
+        elif saved_hwid == dev_id:
+            conn.close(); return owner, bool(is_admin)
+        else:
+            conn.close(); return "WRONG_DEVICE", False
+    conn.close(); return None, False
+
+# --- 4. ЛОГИКА АВТОРИЗАЦИИ ---
+if 'authenticated' not in st.session_state: st.session_state['authenticated'] = False
+
+# Пытаемся восстановить сессию из кук (на 10 лет)
+saved_token = cookie_manager.get(cookie="aida_eternal_token")
+if saved_token and not st.session_state['authenticated']:
+    name, admin = secure_login(saved_token, "AUTO_RELOAD")
+    if name and name != "WRONG_DEVICE":
+        st.session_state.update({"authenticated": True, "user_name": name, "is_admin": admin})
+
+if not st.session_state['authenticated']:
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    _, log_col, _ = st.columns([1, 1.2, 1])
+    with log_col:
+        st.markdown("<h2 style='text-align:center;'>AIDA SYSTEM</h2>", unsafe_allow_html=True)
+        u_name = st.text_input("OPERATOR_ID")
+        u_key = st.text_input("ACCESS_KEY", type="password")
+        if st.button("AUTHORIZE SYSTEM"):
+            name, admin = secure_login(u_key, u_name)
+            if name == "WRONG_DEVICE": st.error("LOCKED: Ключ привязан к другому устройству")
+            elif name:
+                st.session_state.update({"authenticated": True, "user_name": name, "is_admin": admin})
+                cookie_manager.set("aida_eternal_token", u_key, expires_at=datetime.now()+timedelta(days=3650))
+                st.rerun()
+            else: st.error("ACCESS DENIED: INVALID KEY")
+    st.stop()
+
+# --- 5. ОСНОВНОЙ ИНТЕРФЕЙС ---
+# Status Bar
+st.markdown(f"""
+<div class="status-bar">
+    <span>SYSTEM: ONLINE</span>
+    <span>OPERATOR: {st.session_state.user_name}</span>
+    <span>STATION: {platform.node()}</span>
+</div>
 """, unsafe_allow_html=True)
 
-# --- 2. ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ ---
-conn = sqlite3.connect('aida_production_v12.db', check_same_thread=False)
-c = conn.cursor()
-c.execute('CREATE TABLE IF NOT EXISTS formulas (id INTEGER PRIMARY KEY AUTOINCREMENT, mark TEXT, model TEXT, year TEXT, code TEXT, components TEXT, notes TEXT)')
-c.execute('CREATE TABLE IF NOT EXISTS keys (license_key TEXT, owner_name TEXT, hwid TEXT, expiry_date TEXT)')
-c.execute('CREATE TABLE IF NOT EXISTS user_history (license_key TEXT, search_query TEXT, timestamp DATETIME)')
-c.execute('CREATE TABLE IF NOT EXISTS user_favorites (license_key TEXT, formula_id INTEGER)')
-c.execute('CREATE TABLE IF NOT EXISTS global_chat (id INTEGER PRIMARY KEY AUTOINCREMENT, sender TEXT, sender_key TEXT, message TEXT, formula_data TEXT, timestamp DATETIME)')
-c.execute('CREATE TABLE IF NOT EXISTS message_likes (message_id INTEGER, user_key TEXT, UNIQUE(message_id, user_key))')
-conn.commit()
+menu = st.sidebar.radio("NAVIGATIONAL MENU:", ["LABORATORY", "CHAMBER", "MESSAGES", "ADMIN PANEL" if st.session_state.is_admin else ""])
 
-# --- Вспомогательные функции ---
-def get_user_status(user_key):
-    likes = c.execute("SELECT COUNT(ml.message_id) FROM message_likes ml JOIN global_chat gc ON ml.message_id = gc.id WHERE gc.sender_key = ?", (user_key,)).fetchone()[0]
-    if likes >= 50: return "💎 МАСТЕР-ЛЕГЕНДА", "#00d4ff"
-    if likes >= 20: return "🔥 ТОП-КОЛОРИСТ", "#ff8c00"
-    if likes >= 5: return "🛠 ПРОФИ", "#51cf66"   
-    return "👨‍ู่ НОВИЧОК", "#8b949e"
+if menu == "LABORATORY":
+    st.markdown('<div class="industrial-header">Formula Database Search</div>', unsafe_allow_html=True)
+    query = st.text_input("ENTER CODE OR BRAND:")
+    if query:
+        conn = sqlite3.connect('aida_production_v12.db')
+        df = pd.read_sql(f"SELECT * FROM recipes WHERE code LIKE '%{query}%' OR mark LIKE '%{query}%'", conn)
+        conn.close()
+        for _, r in df.iterrows():
+            with st.expander(f"REPRO: {r['mark']} | {r['code']}"):
+                target = st.number_input("TOTAL WT (g):", 10, 5000, 500, key=f"r_{r['id']}")
+                comps = [i.split(":") for i in r['components'].split(",") if ":" in i]
+                ratio = target / sum([float(i[1]) for i in comps])
+                st.markdown("---")
+                for name, val in comps:
+                    st.write(f"**{name}**: `{round(float(val)*ratio, 2)} g`")
 
-# --- 3. АВТОРИЗАЦИЯ И ПРАВИЛА ---
-if 'auth' not in st.session_state: st.session_state.auth = False
-
-if not st.session_state.auth:
-    st.title("🤖 A.I.D.A. CORE V12.5")
-    u_key = st.text_input("Введите ключ доступа:", type="password")
-    if st.button("АКТИВИРОВАТЬ ЯДРО"):
-        device = get_device_id()
-        res = c.execute("SELECT owner_name, hwid, expiry_date FROM keys WHERE license_key = ?", (u_key,)).fetchone()
-        if res:
-            owner, saved_hwid, exp_str = res
-            if datetime.now() > datetime.strptime(exp_str, '%Y-%m-%d'): st.error("Срок истек.")
-            elif not saved_hwid or saved_hwid == device:
-                c.execute("UPDATE keys SET hwid = ? WHERE license_key = ?", (device, u_key))
-                conn.commit()
-                st.session_state.auth, st.session_state.user, st.session_state.auth_key = True, owner, u_key
-                st.rerun()
-            else: st.error("Заблокировано: другое устройство.")
-        else: st.error("Ключ не найден.")
-    st.stop()
-
-# --- 4. ОСНОВНОЙ ИНТЕРФЕЙС ---
-u_key = st.session_state.auth_key
-menu = st.sidebar.radio("МЕНЮ", ["🔍 Поиск", "💬 ОБЩИЙ ЧАТ", "🛒 Подписка", "➕ Добавить", "🔐 Админ-панель"])
-
-# --- РАЗДЕЛ: ПОИСК ---
-if menu == "🔍 Поиск":
-    st.header("База рецептур DynaCoat (AkzoNobel)")
+elif menu == "MESSAGES":
+    st.markdown('<div class="industrial-header">Production Chat</div>', unsafe_allow_html=True)
+    with st.form("chat_form", clear_on_submit=True):
+        m_txt = st.text_input("MESSAGE:")
+        if st.form_submit_button("SEND"):
+            conn = sqlite3.connect('aida_production_v12.db')
+            conn.cursor().execute("INSERT INTO chat (user, message, timestamp) VALUES (?,?,?)", 
+                                  (st.session_state.user_name, m_txt, datetime.now()))
+            conn.commit(); conn.close(); st.rerun()
     
-    with st.sidebar:
-        st.write("---")
-        t_hist, t_fav = st.tabs(["🕒 История", "⭐ Избранное"])
-        with t_hist:
-            h_df = pd.read_sql("SELECT search_query FROM user_history WHERE license_key=? ORDER BY timestamp DESC LIMIT 150", conn, params=(u_key,))
-            for h in h_df['search_query']: 
-                if st.button(f"🔍 {h}", key=f"h_{h}"): st.session_state.cur_s = h; st.rerun()
-        with t_fav:
-            f_df = pd.read_sql("SELECT f.* FROM formulas f JOIN user_favorites uf ON f.id = uf.formula_id WHERE uf.license_key=?", conn, params=(u_key,))
-            for _, f_r in f_df.iterrows():
-                if st.button(f"⭐ {f_r['mark']} {f_r['code']}", key=f"f_{f_r['id']}"): st.session_state.cur_s = f_r['code']; st.rerun()
+    conn = sqlite3.connect('aida_production_v12.db')
+    chat_data = pd.read_sql("SELECT * FROM chat ORDER BY timestamp DESC LIMIT 30", conn)
+    conn.close()
+    for _, m in chat_data.iterrows():
+        st.markdown(f'<div class="chat-msg"><b>{m["user"]}</b>: {m["message"]} <br><small>{m["timestamp"][11:16]}</small></div>', unsafe_allow_html=True)
 
-    search_query = st.text_input("Поиск (марка, код, цвет):", value=st.session_state.get('cur_s', ""))
-    if search_query:
-        c.execute("DELETE FROM user_history WHERE license_key=? AND search_query=?", (u_key, search_query))
-        c.execute("INSERT INTO user_history VALUES (?, ?, ?)", (u_key, search_query, datetime.now()))
-        conn.commit()
-
-    df = pd.read_sql("SELECT * FROM formulas", conn)
-    if search_query:
-        df = df[df['mark'].str.contains(search_query, case=False, na=False) | df['code'].str.contains(search_query, case=False, na=False) | df['notes'].str.contains(search_query, case=False, na=False)]
+elif menu == "ADMIN PANEL" and st.session_state.is_admin:
+    cleanup_old_logs()
+    st.markdown('<div class="industrial-header">Root Administration</div>', unsafe_allow_html=True)
+    t1, t2, t3 = st.tabs(["KEY CONTROL", "30-DAY LOGS", "CHAT MODERATION"])
     
-    for _, r in df.iterrows():
-        is_fav = c.execute("SELECT 1 FROM user_favorites WHERE license_key=? AND formula_id=?", (u_key, r['id'])).fetchone()
-        col_c, col_btns = st.columns([0.8, 0.2])
-        with col_btns:
-            if st.button("⭐" if is_fav else "☆", key=f"fav_{r['id']}"):
-                if is_fav: c.execute("DELETE FROM user_favorites WHERE license_key=? AND formula_id=?", (u_key, r['id']))
-                else: c.execute("INSERT INTO user_favorites VALUES (?,?)", (u_key, r['id']))
-                conn.commit(); st.rerun()
-            if st.button("🔗", key=f"sh_{r['id']}"):
-                f_data = f"🎨 {r['mark']} {r['code']} ({r['notes']})"
-                c.execute("INSERT INTO global_chat (sender, sender_key, message, formula_data, timestamp) VALUES (?,?,?,?,?)", (st.session_state.user, u_key, "Поделился формулой", f_data, datetime.now()))
-                conn.commit(); st.toast("Отправлено в чат!")
-        # --- ВЫВОД РЕЗУЛЬТАТОВ ПОИСКА ---
-        with col2:
-            # Безопасный разбор компонентов (строка 117)
-            comps = []
-            if r['components']:
-                for c_i in r['components'].split(","):
-                    if ":" in c_i:
-                        p = c_i.split(":")
-                        comps.append(f'<div class="component-row"><span style="color:#58a6ff">{p[0]}</span> <span>{p[1]} г</span></div>')
-            comp_html = "".join(comps)
+    with t1:
+        new_k = st.text_input("NEW LICENSE KEY")
+        new_o = st.text_input("CLIENT NAME")
+        if st.button("ISSUE LICENSE"):
+            conn = sqlite3.connect('aida_production_v12.db')
+            conn.cursor().execute("INSERT INTO keys (license_key, owner_name, hwid) VALUES (?,?,?)", (new_k, new_o, "NEW"))
+            conn.commit(); conn.close(); st.success("KEY ISSUED")
             
-            st.markdown(f'<div class="formula-card"><div class="card-header">{r["mark"]} {r["model"]} | {r["code"]}</div><div style="color:gray">{r["notes"]}</div>{comp_html}</div>', unsafe_allow_html=True)
-
-# --- РАЗДЕЛ: ЧАТ (строка 127) ---
-elif menu == "💬 ОБЩИЙ ЧАТ":
-    st.header("Сообщество AIDA Dynamics")
-    m_in = st.chat_input("Напишите коллегам...")
-    if m_in:
-        c.execute("INSERT INTO global_chat (sender, sender_key, message, timestamp) VALUES (?,?,?,?)", (st.session_state.user_name, "key", m_in, datetime.now()))
-        conn.commit()
-        st.rerun()
-
-    c_data = pd.read_sql("SELECT * FROM global_chat ORDER BY timestamp DESC LIMIT 50", conn)
-    for _, m in c_data.iterrows():
-        display_name = m['sender']
-        if m['sender'] in ["Tony Stark", "Админ", "тапок"]:
-            display_name = f"👑 <span style='color:#ff4b4b; font-weight:bold;'>[ADMIN]</span> {m['sender']}"
-        else:
-            display_name = f"👤 {m['sender']}"
-            
-        with st.chat_message("user"):
-            st.markdown(f"{display_name}", unsafe_allow_html=True)
-            st.write(m['message'])
-            
-            # Кнопка удаления для админа (строка 144 вашего кода)
-            if st.session_state.get('is_admin', False):
-                if st.button("🗑️", key=f"del_{m['id']}"):
-                    c.execute("DELETE FROM global_chat WHERE id = ?", (m['id'],))
-                    conn.commit()
-                    st.rerun()
-
-# --- РАЗДЕЛ: АДМИНКА ---
-elif menu == "🔐 Админ-панель":
-    if st.text_input("Пароль владельца:", type="password") == "AIDA_ADMIN_2026_PRO":
-        st.subheader("🏆 ЗАЛ СЛАВЫ")
-        lead_df = pd.read_sql("SELECT gc.sender as Мастер, COUNT(ml.user_key) as Лайки FROM global_chat gc LEFT JOIN message_likes ml ON gc.id = ml.message_id GROUP BY gc.sender ORDER BY Лайки DESC LIMIT 5", conn)
-        st.table(lead_df)
+    with t2:
+        conn = sqlite3.connect('aida_production_v12.db')
+        st.dataframe(pd.read_sql("SELECT * FROM logs ORDER BY timestamp DESC", conn), use_container_width=True)
+        conn.close()
         
-        st.subheader("Выпуск ключей")
-        with st.form("new_key"):
-            nk, no, nd = generate_secure_key(), st.text_input("Имя"), st.number_input("Дней", 1, 365, 30)
-            if st.form_submit_button("Создать"):
-                exp = (datetime.now() + timedelta(days=nd)).strftime('%Y-%m-%d')
-                c.execute("INSERT INTO keys (license_key, owner_name, expiry_date) VALUES (?,?,?)", (nk, no, exp))
-                conn.commit(); st.success(f"Ключ: {nk}")
-        
-        st.subheader("Управление базой")
-        st.dataframe(pd.read_sql("SELECT * FROM keys", conn))
-        dk = st.text_input("Ключ для удаления:")
-        if st.button("Удалить"): c.execute("DELETE FROM keys WHERE license_key=?", (dk,)); conn.commit(); st.rerun()
-
-# --- РАЗДЕЛ: ДОБАВЛЕНИЕ ---
-elif menu == "➕ Добавить":
-    with st.form("add_f"):
-        ma, mo, co, cm, nt = st.text_input("Марка"), st.text_input("Модель"), st.text_input("Код"), st.text_area("Тонеры (400:150, 480:10)"), st.text_input("Заметки")
-        if st.form_submit_button("Сохранить в базу"):
-            c.execute("INSERT INTO formulas (mark, model, code, components, notes) VALUES (?,?,?,?,?)", (ma, mo, co, cm, nt))
-            conn.commit(); st.success("Формула добавлена.")
-
-# --- РАЗДЕЛ: МАГАЗИН ---
-elif menu == "🛒 Подписка":
-    st.header("Магазин лицензий")
-    st.info(f"ID вашего устройства: {get_device_id()}")
-    st.write("Цена: 7777 ₽ / 30 дней")
-    st.markdown("[💳 ОПЛАТИТЬ ЧЕРЕЗ СБП](https://qr.nspk.ru/ВАШ_КОД)")
-    if st.button("ПОЛУЧИТЬ КЛЮЧ ПОСЛЕ ОПЛАТЫ"):
-        nk = generate_secure_key()
-        exp = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
-        c.execute("INSERT INTO keys (license_key, owner_name, expiry_date) VALUES (?, 'Клиент_Сайта', ?)", (nk, exp))
-        conn.commit(); st.success(f"Ваш ключ: {nk}")
-        
-# Выводим в чат с использованием unsafe_allow_html=True для работы стилей
-st.markdown(f"{display_name}: {msg['text']}", unsafe_allow_html=True)
-import streamlit as st
-import extra_streamlit_components as stx
-from datetime import datetime, timedelta
-
-# --- ИНИЦИАЛИЗАЦИЯ МЕНЕДЖЕРА КУКИ ---
-@st.cache_resource
-def get_cookie_manager():
-    return stx.CookieManager()
-
-cookie_manager = get_cookie_manager()
-
-# Проверяем, есть ли уже сохраненный ключ в браузере
-saved_key = cookie_manager.get(cookie="aida_access_token")
-
-if 'authenticated' not in st.session_state:
-    st.session_state['authenticated'] = False
-
-# Если нашли куку и еще не авторизованы — авторизуем автоматически
-if saved_key and not st.session_state['authenticated']:
-    # Тут можно добавить проверку saved_key в базе данных для безопасности
-    st.session_state['authenticated'] = True
-    st.session_state['user_name'] = "Tony Stark" # Или имя владельца ключа
-    st.session_state['is_admin'] = True # Если это ваш ключ
-
-# --- ОКНО ВХОДА (если куки нет или она неверна) ---
-if not st.session_state['authenticated']:
-    st.title("A.I.D.A. CORE: Авторизация")
-    key_input = st.text_input("Введите протокол доступа:", type="password")
-    
-    if st.button("АКТИВИРОВАТЬ"):
-        # ПРОВЕРКА КЛЮЧА В БАЗЕ (замените логику на вашу из БД)
-        if key_input == "AIDA-8KCV-NP4X": 
-            st.session_state['authenticated'] = True
-            st.session_state['user_name'] = "Tony Stark"
-            st.session_state['is_admin'] = True
-            
-            # СОХРАНЯЕМ КУКУ НА 30 ДНЕЙ
-            cookie_manager.set("aida_access_token", key_input, expires_at=datetime.now() + timedelta(days=30))
-            st.rerun()
-        else:
-            st.error("Доступ отклонен. Ключ не распознан.")
-    st.stop()
-
-# --- ВЕСЬ ОСТАЛЬНОЙ ИНТЕРФЕЙС НИЖЕ ---
-st.success(f"Система активна. Приветствую, {st.session_state['user_name']}!")
-# Убедитесь, что этот код идет СРАЗУ ПОСЛЕ строки: for msg in messages:
-for msg in messages:
-    # Теперь переменная 'msg' существует, и ошибки не будет
-    display_name = msg['user']
-    
-    if msg['user'] in ["Tony Stark", "Админ", "тапок"]:
-        display_name = f"👑 <span style='color:#ff4b4b; font-weight:bold;'>[ADMIN]</span> {msg['user']}"
-    else:
-        display_name = f"👤 {msg['user']}"
-    
-    # Вывод сообщения
-    st.markdown(f"{display_name}: {msg['text']}", unsafe_allow_html=True)
+    with t3:
+        conn = sqlite3.connect('aida_production_v12.db')
+        mod_chat = pd.read_sql("SELECT * FROM chat ORDER BY timestamp DESC", conn)
+        conn.close()
+        for _, msg in mod_chat.iterrows():
+            c1, c2 = st.columns([5, 1])
+            c1.write(f"[{msg['user']}]: {msg['message']}")
+            if c2.button("DELETE", key=f"del_{msg['id']}"):
+                conn = sqlite3.connect('aida_production_v12.db')
+                conn.cursor().execute("DELETE FROM chat WHERE id = ?", (msg['id'],))
+                conn.commit(); conn.close(); st.rerun()
