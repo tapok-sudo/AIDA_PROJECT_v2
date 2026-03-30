@@ -98,7 +98,7 @@ if choice == "🧪 База AkzoNobel":
     search = st.text_input("Код или название цвета (напр. 475 или Nardo)")
     
     # Логотипы марок (упрощенно текстом/эмодзи для стабильности)
-    logos = {"BMW": "BMW", "Audi": "𝐀𝐮𝐝𝐢", "Mercedes": "AMG", "Toyota": "⛩️"}
+    logos = {"BMW": "", "Audi": "", "Mercedes": "", "Toyota": ""}
     
     df = pd.read_sql(f"SELECT * FROM recipes WHERE code LIKE '%{search}%' OR name LIKE '%{search}%'", conn)
     for _, r in df.iterrows():
