@@ -3,128 +3,155 @@ import sqlite3
 import pandas as pd
 from datetime import datetime
 
-# --- 1. СТИЛЬ ПРЕМИУМ-ТЕРМИНАЛА ---
-st.set_page_config(page_title="AIDA OS | AkzoNobel", page_icon="🦾", layout="wide")
+# --- 1. ПРЕМЬЕР-ИНТЕРФЕЙС ---
+st.set_page_config(page_title="AIDA OS | Network", page_icon="🦾", layout="wide")
 
 st.markdown("""
 <style>
-    .stApp { background-color: #0b0f19; color: #e2e8f0; }
-    .color-card { 
-        background: #161b22; border: 1px solid #30363d; 
-        padding: 20px; border-radius: 10px; margin-bottom: 15px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-    }
-    .color-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #3b82f6; padding-bottom: 10px; margin-bottom: 15px; }
-    .mark-label { background: #238636; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
-    .recipe-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    .recipe-table td { padding: 8px; border-bottom: 1px solid #21262d; font-family: 'Courier New', monospace; }
-    .weight-val { color: #58a6ff; font-weight: bold; text-align: right; }
-    .stButton>button { background-color: #238636; color: white; border: none; width: 100%; }
+    .stApp { background-color: #0d1117; color: #c9d1d9; }
+    .card { background: #161b22; border: 1px solid #30363d; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
+    .admin-badge { background: #cf222e; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; }
+    .user-msg { background: #0d1117; border-left: 3px solid #238636; padding: 8px; margin: 5px 0; font-size: 14px; }
+    .recipe-val { color: #58a6ff; font-weight: bold; font-family: monospace; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. БАЗА ДАННЫХ С РЕЦЕПТАМИ AKZONOBEL (100+ ПОЗИЦИЙ) ---
+# --- 2. ЯДРО БАЗЫ ДАННЫХ ---
 def init_db():
-    conn = sqlite3.connect('aida_v12_akzo.db')
+    conn = sqlite3.connect('aida_v13_net.db')
     c = conn.cursor()
+    # Таблица пользователей (имя уникально)
+    c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, is_admin INTEGER DEFAULT 0)')
+    # Таблица рецептов (включая кастомные)
     c.execute('''CREATE TABLE IF NOT EXISTS recipes 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, mark TEXT, code TEXT, name TEXT, components TEXT, notes TEXT)''')
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, author TEXT, mark TEXT, code TEXT, name TEXT, components TEXT, notes TEXT, is_rare INTEGER DEFAULT 0)''')
+    # Общий чат
+    c.execute('CREATE TABLE IF NOT EXISTS global_chat (id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT, msg TEXT, time TEXT)')
     
+    # Создаем админа по умолчанию
+    c.execute("INSERT OR IGNORE INTO users VALUES ('Админ', 'AIDA2026', 1)")
+    
+    # Первичные рецепты AkzoNobel
     c.execute("SELECT COUNT(*) FROM recipes")
-    if c.fetchone()[0] < 100:
-        c.execute("DELETE FROM recipes")
-        
-        # Реальные формулы (примерный формат AkzoNobel/Sikkens)
-        formulas = [
-            # Немецкая тройка
-            ('BMW', '475', 'Black Sapphire', 'Mix100:450.5,Mix110:30.2,Mix120:15.8,Mix190:3.5', 'Использовать подложку G5. 2 слоя.'),
-            ('BMW', 'C1M', 'Phytonic Blue', 'Mix500:300.0,Mix510:120.5,Mix800:45.0,Mix001:34.5', 'Крупный металлик. Контроль давления.'),
-            ('AUDI', 'LY7C', 'Nardo Grey', 'Mix010:350.0,Mix012:120.0,Mix015:30.0', 'Чистый солид. Без перламутра.'),
-            ('AUDI', 'LX7W', 'Ice Silver', 'Mix200:400.0,Mix210:45.5,Mix220:5.5', 'Мелкое серебро. Равномерный распыл.'),
-            ('MERCEDES', '197', 'Obsidian Black', 'Mix100:420.0,Mix130:60.0,Mix140:20.0', 'Классика MB. 2.5 слоя.'),
-            ('MERCEDES', '799', 'Diamond White', 'Base:400.0,Pearl:45.0,Toner:10.0', 'Трехслойка. Важен слой лака.'),
-            # Японцы и Корейцы
-            ('MAZDA', '46V', 'Soul Red Crystal', 'Base46V:250.0,Mid46V:150.0,Clear:100.0', 'Спецэффект. Требует калибровки пистолета.'),
-            ('TOYOTA', '070', 'White Pearl', 'White:480.0,Pearl070:55.0', 'Белая подложка L070.'),
-            ('HYUNDAI', 'WC5', 'Milky White', 'Mix01:490.0,Mix05:10.0', 'Простой белый солид.'),
-            ('LEXUS', '1J7', 'Sonic Silver', 'Mix900:400.0,Mix910:80.0,Mix920:20.0', 'Многослойный металлик.'),
+    if c.fetchone()[0] == 0:
+        base = [
+            ('Система', 'BMW', '475', 'Black Sapphire', 'Mix100:450,Mix110:30,Mix120:20', 'Akzo Standart', 0),
+            ('Система', 'MAZDA', '46V', 'Soul Red Crystal', 'Base:250,Mid:150,Clear:100', 'Сложный трехслой', 1)
         ]
-        
-        # Наполнение базы разнообразными цветами для массовости (100+)
-        marks = ['FORD', 'KIA', 'NISSAN', 'VOLVO', 'PORSCHE', 'HONDA', 'RENAULT']
-        for i in range(1, 95):
-            m = marks[i % len(marks)]
-            formulas.append((m, f'C-{500+i}', f'Mix Trend {i}', f'MixA:{200+i},MixB:{50+i},MixC:10', 'Системный подбор.'))
-            
-        c.executemany("INSERT INTO recipes (mark, code, name, components, notes) VALUES (?,?,?,?,?)", formulas)
+        c.executemany("INSERT INTO recipes (author, mark, code, name, components, notes, is_rare) VALUES (?,?,?,?,?,?,?)", base)
     conn.commit()
     conn.close()
 
 init_db()
 
-# --- 3. АВТОРИЗАЦИЯ ---
-if 'auth' not in st.session_state: st.session_state.auth = False
+# --- 3. СИСТЕМА АККАУНТОВ ---
+if 'user' not in st.session_state: st.session_state.user = None
+if 'is_admin' not in st.session_state: st.session_state.is_admin = False
 
-if not st.session_state.auth:
-    st.markdown("<h1 style='text-align:center;'>🦾 AIDA TERMINAL</h1>", unsafe_allow_html=True)
-    key = st.text_input("КЛЮЧ ДОСТУПА:", type="password")
-    if st.button("ВОЙТИ"):
-        if key == "MASTER_AIDA_2026":
-            st.session_state.auth = True
-            st.rerun()
+def login_ui():
+    st.title("🦾 ВХОД В ТЕРМИНАЛ")
+    tab_log, tab_reg = st.tabs(["Вход", "Регистрация"])
+    
+    with tab_log:
+        u = st.text_input("Имя пользователя:")
+        p = st.text_input("Пароль:", type="password")
+        if st.button("ВОЙТИ"):
+            conn = sqlite3.connect('aida_v13_net.db')
+            res = conn.cursor().execute("SELECT is_admin FROM users WHERE username=? AND password=?", (u, p)).fetchone()
+            conn.close()
+            if res:
+                st.session_state.user = u
+                st.session_state.is_admin = bool(res[0])
+                st.rerun()
+            else: st.error("Неверные данные")
+
+    with tab_reg:
+        new_u = st.text_input("Придумайте имя (уникальное):")
+        new_p = st.text_input("Придумайте пароль:", type="password", key="reg_p")
+        if st.button("СОЗДАТЬ АККАУНТ"):
+            try:
+                conn = sqlite3.connect('aida_v13_net.db')
+                conn.cursor().execute("INSERT INTO users (username, password) VALUES (?,?)", (new_u, new_p))
+                conn.commit()
+                conn.close()
+                st.success("Аккаунт создан! Теперь войдите.")
+            except: st.error("Это имя уже занято. Выберите другое.")
+
+if not st.session_state.user:
+    login_ui()
     st.stop()
 
-# --- 4. ИНТЕРФЕЙС ТЕРМИНАЛА ---
-st.title("🧪 ЛАБОРАТОРИЯ ЦВЕТА")
-search = st.text_input("Поиск по коду (напр. 475) или марке (напр. BMW):")
+# --- 4. ГЛАВНОЕ МЕНЮ ---
+st.sidebar.title(f"👤 {st.session_state.user}")
+if st.session_state.is_admin: st.sidebar.markdown('<span class="admin-badge">ADMIN ACCESS</span>', unsafe_allow_html=True)
 
-conn = sqlite3.connect('aida_v12_akzo.db')
-query = f"SELECT * FROM recipes WHERE code LIKE '%{search}%' OR mark LIKE '%{search}%' LIMIT 50"
-df = pd.read_sql(query, conn)
-conn.close()
+menu = ["🧪 Лаборатория", "🛠 Добавить рецепт", "💬 Общий чат"]
+if st.session_state.is_admin: menu.append("⚙️ Админ-панель")
+choice = st.sidebar.radio("Меню", menu)
 
-if df.empty:
-    st.warning("Рецепт не найден в базе AkzoNobel.")
-else:
+if st.sidebar.button("Выход"):
+    st.session_state.user = None
+    st.rerun()
+
+# --- 5. ФУНКЦИОНАЛ ---
+conn = sqlite3.connect('aida_v13_net.db')
+
+if choice == "🧪 Лаборатория":
+    st.subheader("Поиск по базе AkzoNobel и кастомным ТС")
+    search = st.text_input("Код, марка или название:")
+    df = pd.read_sql(f"SELECT * FROM recipes WHERE code LIKE '%{search}%' OR mark LIKE '%{search}%' OR name LIKE '%{search}%'", conn)
+    
     for _, r in df.iterrows():
-        with st.container():
-            st.markdown(f"""
-            <div class="color-card">
-                <div class="color-header">
-                    <div>
-                        <span class="mark-label">{r['mark']}</span>
-                        <span style="font-size: 22px; font-weight: bold; margin-left: 10px;">{r['code']}</span>
-                    </div>
-                    <div style="color: #8b949e;">{r['name']}</div>
-                </div>
-                <p style="font-size: 14px; color: #cbd5e1;">📝 Примечание: {r['notes']}</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # КАЛЬКУЛЯТОР ВНУТРИ КАРТОЧКИ
-            with st.expander("⚖️ ОТКРЫТЬ ФОРМУЛУ И РАССЧИТАТЬ ВЕС"):
-                col1, col2 = st.columns([1, 2])
-                with col1:
-                    target_w = st.number_input(f"Вес (грамм):", 10, 10000, 500, 50, key=f"w_{r['id']}")
-                
-                with col2:
-                    st.markdown("### Состав (AkzoNobel Mix)")
-                    comps = [c.split(":") for c in r['components'].split(",") if ":" in c]
-                    total_parts = sum(float(c[1]) for c in comps)
-                    
-                    st.markdown('<table class="recipe-table">', unsafe_allow_html=True)
-                    accumulated = 0
-                    for name, val in comps:
-                        calc = round(float(val) * (target_w / total_parts), 1)
-                        accumulated += calc
-                        st.markdown(f"""
-                        <tr>
-                            <td>{name}</td>
-                            <td class="weight-val">{calc} г</td>
-                            <td style="color: #444; font-size: 10px;">(накоп: {round(accumulated, 1)})</td>
-                        </tr>
-                        """, unsafe_allow_html=True)
-                    st.markdown('</table>', unsafe_allow_html=True)
-                    st.success(f"Итого: {round(accumulated, 1)} г")
+        with st.expander(f"[{r['mark']}] {r['code']} - {r['name']} {'⭐ (РЕДКОЕ)' if r['is_rare'] else ''}"):
+            st.write(f"Автор: {r['author']} | Заметка: {r['notes']}")
+            target = st.number_input("Вес (г):", 10, 5000, 500, 50, key=f"w_{r['id']}")
+            comps = [c.split(":") for c in r['components'].split(",") if ":" in c]
+            total = sum(float(c[1]) for c in comps)
+            for name, val in comps:
+                calc = round(float(val) * (target / total), 1)
+                st.markdown(f"**{name}**: <span class='recipe-val'>{calc} г</span>", unsafe_allow_html=True)
+
+elif choice == "🛠 Добавить рецепт":
+    st.subheader("Добавление редкого ТС без кода")
+    with st.form("add_form"):
+        m = st.text_input("Марка ТС:")
+        c = st.text_input("Код (если нет, пишем 'CUSTOM'):")
+        n = st.text_input("Название (напр. 'Темная вишня металлик'):")
+        comp_str = st.text_area("Компоненты через запятую (напр. Mix100:200,Mix110:50):")
+        note = st.text_input("Советы по напылу:")
+        rare = st.checkbox("Это редкое ТС / эксклюзив")
+        if st.form_submit_button("СОХРАНИТЬ В БАЗУ"):
+            conn.cursor().execute("INSERT INTO recipes (author, mark, code, name, components, notes, is_rare) VALUES (?,?,?,?,?,?,?)",
+                                  (st.session_state.user, m, c, n, comp_str, note, 1 if rare else 0))
+            conn.commit()
+            st.success("Рецепт добавлен в общую базу!")
+
+elif choice == "💬 Общий чат":
+    st.subheader("Чат мастеров AIDA")
+    msg = st.chat_input("Напишите коллегам...")
+    if msg:
+        conn.cursor().execute("INSERT INTO global_chat (user, msg, time) VALUES (?,?,?)",
+                              (st.session_state.user, msg, datetime.now().strftime("%H:%M")))
+        conn.commit()
+    
+    chat_df = pd.read_sql("SELECT * FROM global_chat ORDER BY id DESC LIMIT 30", conn)
+    for _, m in chat_df.iterrows():
+        st.markdown(f"<div class='user-msg'><b>{m['user']}</b> ({m['time']}): {m['msg']}</div>", unsafe_allow_html=True)
+
+elif choice == "⚙️ Админ-панель" and st.session_state.is_admin:
+    st.subheader("Управление пользователями")
+    users_df = pd.read_sql("SELECT username, is_admin FROM users", conn)
+    st.table(users_df)
+    
+    st.subheader("Все рецепты")
+    all_rec = pd.read_sql("SELECT id, author, mark, code FROM recipes", conn)
+    st.dataframe(all_rec)
+    del_id = st.number_input("ID для удаления рецепта:", step=1)
+    if st.button("УДАЛИТЬ"):
+        conn.cursor().execute("DELETE FROM recipes WHERE id=?", (del_id,))
+        conn.commit()
+        st.rerun()
+
+conn.close()
 
 
