@@ -29,8 +29,8 @@ def init_db():
     conn = sqlite3.connect('aida_v15_ultimate.db')
     c = conn.cursor()
     c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, is_admin INTEGER DEFAULT 0)')
-    c.execute('CREATE TABLE IF NOT EXISTS recipes 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, author TEXT, mark TEXT, code TEXT, name TEXT, components TEXT, notes TEXT, is_rare INTEGER DEFAULT 0)')
+    c.execute('''CREATE TABLE IF NOT EXISTS recipes 
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, author TEXT, mark TEXT, code TEXT, name TEXT, components TEXT, notes TEXT, is_rare INTEGER DEFAULT 0)''')
     c.execute('CREATE TABLE IF NOT EXISTS chat (id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT, msg TEXT, time TEXT)')
     
     # Создание Админа
