@@ -119,7 +119,7 @@ def init_db():
             ('Akzo', '4802', 'Fine Silver', '4802:500', 'SILV'),
             ('Akzo', '4906', 'Deep Blue Pearl', '4906:500', 'PEARL'),
             ('Akzo', '4603', 'White Pearl XL', '4603:500', 'PEARL')
-                        ] 
+            ] 
     c.executemany("INSERT INTO recipes (mark, code, name, components, vykraska) VALUES (?, ?, ?, ?, ?)", base_data)
     
     conn.commit()
