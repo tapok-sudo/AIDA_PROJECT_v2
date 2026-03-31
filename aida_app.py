@@ -20,7 +20,7 @@ st.markdown("""
 
 # --- БАЗА ДАННЫХ ---
 def init_db():
-    conn = sqlite3.connect('aida_clean_v1.db')
+    conn = sqlite3.connect('aida_new_start.db')
     c = conn.cursor()
     # Пользователи и ключи (привязка к устройству через имитацию token)
     c.execute('''CREATE TABLE IF NOT EXISTS users 
@@ -120,6 +120,7 @@ def init_db():
             ('Akzo', '4906', 'Deep Blue Pearl', '4906:500', 'PEARL'),
             ('Akzo', '4603', 'White Pearl XL', '4603:500', 'PEARL')
         ]
+        '''python
         c.executemany("INSERT INTO recipes (mark, code, name, components, vykraska) VALUES (?, ?, ?, ?, ?)", base_data)
     
     conn.commit()
